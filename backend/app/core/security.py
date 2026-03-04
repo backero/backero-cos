@@ -1,0 +1,105 @@
+import random
+import string
+import time
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
+import redis.asyncio as aioredis
+from jose import JWTError, jwt
+
+from app.core.config import settings
+
+_redis: Optional[aioredis.Redis] = None
+_redis_available: Optional[bool] = None  # None = not yet tested
+
+# ── In-memory OTP store (fallback when Redis is unavailable) ──────────────────
+# { key: (value, expires_at_unix_timestamp) }
+_mem_store: dict[str, tuple[str, float]] = {}
+
+
+def _mem_set(key: str, value: str, ttl: int) -> None:
+    _mem_store[key] = (value, time.time() + ttl)
+
+
+def _mem_get(key: str) -> Optional[str]:
+    entry = _mem_store.get(key)
+    if entry is None:
+        return None
+    value, expires_at = entry
+    if time.time() > expires_at:
+        _mem_store.pop(key, None)
+        return None
+    return value
+
+
+def _mem_delete(key: str) -> None:
+    _mem_store.pop(key, None)
+
+
+# ── Redis connection with availability check ──────────────────────────────────
+
+async def _get_redis_if_available() -> Optional[aioredis.Redis]:
+    global _redis, _redis_available
+    if _redis_available is False:
+        return None  # already know it's down — skip
+    if _redis is None:
+        _redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True,
+                                   socket_connect_timeout=1)
+    try:
+        await _redis.ping()
+        _redis_available = True
+        return _redis
+    except Exception:
+        _redis_available = False
+        print("[Security] Redis unavailable — using in-memory OTP store (dev mode)")
+        return None
+
+
+# ── JWT helpers ───────────────────────────────────────────────────────────────
+
+def create_access_token(subject: str, role: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    payload = {"sub": subject, "role": role, "exp": expire, "type": "access"}
+    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def create_refresh_token(subject: str, role: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    payload = {"sub": subject, "role": role, "exp": expire, "type": "refresh"}
+    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def decode_token(token: str) -> dict:
+    return jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+
+
+def generate_otp(length: int = 6) -> str:
+    return "".join(random.choices(string.digits, k=length))
+
+
+# ── OTP store (Redis → in-memory fallback) ────────────────────────────────────
+
+async def store_otp(phone: str, otp: str, ttl: int = 300) -> None:
+    key = f"otp:{phone}"
+    r = await _get_redis_if_available()
+    if r:
+        await r.setex(key, ttl, otp)
+    else:
+        _mem_set(key, otp, ttl)
+
+
+async def verify_otp(phone: str, otp: str) -> bool:
+    key = f"otp:{phone}"
+    r = await _get_redis_if_available()
+    if r:
+        stored = await r.get(key)
+        if stored and stored == otp:
+            await r.delete(key)
+            return True
+        return False
+    else:
+        stored = _mem_get(key)
+        if stored and stored == otp:
+            _mem_delete(key)
+            return True
+        return False
