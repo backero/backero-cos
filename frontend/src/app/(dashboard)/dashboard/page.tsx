@@ -81,7 +81,7 @@ export default function DashboardPage() {
 
   if (kpisLoading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 w-full flex-1">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <Skeleton key={i} className="h-32 rounded-xl" />
@@ -92,7 +92,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl">
+    <div className="space-y-6 w-full flex-1">
       {/* KPI Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard

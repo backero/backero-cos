@@ -75,7 +75,7 @@ export function useCreateEmployee() {
       qc.invalidateQueries({ queryKey: ["employees"] });
       toast.success("Employee created successfully");
     },
-    onError: handleApiError,
+    onError: (e) => handleApiError(e),
   });
 }
 
@@ -88,7 +88,7 @@ export function useUpdateEmployee() {
       qc.invalidateQueries({ queryKey: ["employees"] });
       toast.success("Employee updated");
     },
-    onError: handleApiError,
+    onError: (e) => handleApiError(e),
   });
 }
 
@@ -102,7 +102,7 @@ export function useCheckIn() {
       qc.invalidateQueries({ queryKey: QK.kpis });
       toast.success("Checked in successfully");
     },
-    onError: handleApiError,
+    onError: (e) => handleApiError(e),
   });
 }
 
@@ -114,7 +114,7 @@ export function useCheckOut() {
       qc.invalidateQueries({ queryKey: ["attendance"] });
       toast.success("Checked out successfully");
     },
-    onError: handleApiError,
+    onError: (e) => handleApiError(e),
   });
 }
 
@@ -127,7 +127,7 @@ export function useCreateDepartment() {
       qc.invalidateQueries({ queryKey: QK.departments });
       toast.success("Department created");
     },
-    onError: handleApiError,
+    onError: (e) => handleApiError(e),
   });
 }
 
@@ -148,7 +148,7 @@ export function useCreateTask() {
       qc.invalidateQueries({ queryKey: QK.kpis });
       toast.success("Task created");
     },
-    onError: handleApiError,
+    onError: (e) => handleApiError(e),
   });
 }
 
@@ -161,7 +161,7 @@ export function useUpdateTask() {
       qc.invalidateQueries({ queryKey: ["tasks"] });
       toast.success("Task updated");
     },
-    onError: handleApiError,
+    onError: (e) => handleApiError(e),
   });
 }
 
@@ -174,7 +174,7 @@ export function useCompleteTask() {
       qc.invalidateQueries({ queryKey: QK.kpis });
       toast.success("Task marked as complete");
     },
-    onError: handleApiError,
+    onError: (e) => handleApiError(e),
   });
 }
 
@@ -186,7 +186,15 @@ export function useDeleteTask() {
       qc.invalidateQueries({ queryKey: ["tasks"] });
       toast.success("Task deleted");
     },
-    onError: handleApiError,
+    onError: (e) => handleApiError(e),
+  });
+}
+
+export function useComplianceTasks() {
+  return useQuery({
+    queryKey: ["compliance-tasks"],
+    queryFn: () => api.tasks.compliance(),
+    staleTime: 5 * 60 * 1000,
   });
 }
 
@@ -207,7 +215,7 @@ export function useCreateInvoice() {
       qc.invalidateQueries({ queryKey: ["finance-summary"] });
       toast.success("Invoice created");
     },
-    onError: handleApiError,
+    onError: (e) => handleApiError(e),
   });
 }
 
@@ -228,7 +236,21 @@ export function useCreateEntry() {
       qc.invalidateQueries({ queryKey: QK.kpis });
       toast.success("Entry added");
     },
-    onError: handleApiError,
+    onError: (e) => handleApiError(e),
+  });
+}
+
+export function useUpdateInvoiceStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      api.finance.invoices.updateStatus(id, status),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["finance-summary"] });
+      toast.success("Invoice status updated");
+    },
+    onError: (e) => handleApiError(e),
   });
 }
 
@@ -263,7 +285,7 @@ export function useCreateProduct() {
       qc.invalidateQueries({ queryKey: ["products"] });
       toast.success("Product created");
     },
-    onError: handleApiError,
+    onError: (e) => handleApiError(e),
   });
 }
 
@@ -277,7 +299,7 @@ export function useAdjustStock() {
       qc.invalidateQueries({ queryKey: QK.kpis });
       toast.success("Stock adjusted successfully");
     },
-    onError: handleApiError,
+    onError: (e) => handleApiError(e),
   });
 }
 
@@ -285,6 +307,19 @@ export function useRawMaterials() {
   return useQuery({
     queryKey: QK.rawMaterials,
     queryFn: () => api.inventory.rawMaterials.list(),
+  });
+}
+
+export function useAdjustRawMaterial() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, quantity, reason }: { id: string; quantity: number; reason: string }) =>
+      api.inventory.rawMaterials.adjust(id, quantity, reason),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QK.rawMaterials });
+      toast.success("Raw material stock adjusted");
+    },
+    onError: (e) => handleApiError(e),
   });
 }
 
@@ -296,7 +331,7 @@ export function useCreateRawMaterial() {
       qc.invalidateQueries({ queryKey: QK.rawMaterials });
       toast.success("Raw material added");
     },
-    onError: handleApiError,
+    onError: (e) => handleApiError(e),
   });
 }
 
@@ -315,7 +350,7 @@ export function useCreateBatch() {
       qc.invalidateQueries({ queryKey: ["batches"] });
       toast.success("Production batch created");
     },
-    onError: handleApiError,
+    onError: (e) => handleApiError(e),
   });
 }
 
@@ -335,7 +370,7 @@ export function useUpdateBatchStatus() {
       qc.invalidateQueries({ queryKey: ["batches"] });
       toast.success("Batch status updated");
     },
-    onError: handleApiError,
+    onError: (e) => handleApiError(e),
   });
 }
 
@@ -366,7 +401,7 @@ export function useCreatePlatformOrder() {
       qc.invalidateQueries({ queryKey: ["platform-summary"] });
       toast.success("Order logged");
     },
-    onError: handleApiError,
+    onError: (e) => handleApiError(e),
   });
 }
 

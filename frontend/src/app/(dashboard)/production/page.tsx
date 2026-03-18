@@ -7,6 +7,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   AlertTriangle,
+  ArrowDownCircle,
+  ArrowUpCircle,
   BarChart3,
   CheckCircle2,
   Clock,
@@ -29,6 +31,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  useAdjustRawMaterial,
   useBatches,
   useCreateBatch,
   useCreateRawMaterial,
@@ -61,8 +64,14 @@ const rawMaterialSchema = z.object({
   notes: z.string().optional(),
 });
 
+const adjustRawMatSchema = z.object({
+  quantity: z.number(),
+  reason: z.string().min(2, "Reason required"),
+});
+
 type BatchForm = z.infer<typeof batchSchema>;
 type RawMaterialForm = z.infer<typeof rawMaterialSchema>;
+type AdjustRawMatForm = z.infer<typeof adjustRawMatSchema>;
 
 // ── Status helpers ─────────────────────────────────────────────────────────────
 
@@ -89,6 +98,7 @@ export default function ProductionPage() {
   const { modals, openModal, closeModal } = useUIStore();
   const [statusFilter, setStatusFilter] = useState("");
   const [selectedBatch, setSelectedBatch] = useState<ProductionBatch | null>(null);
+  const [selectedMaterial, setSelectedMaterial] = useState<RawMaterial | null>(null);
 
   // Queries
   const { data: batches, isLoading: batchesLoading } = useBatches({
@@ -101,6 +111,7 @@ export default function ProductionPage() {
   const createBatch = useCreateBatch();
   const updateBatchStatus = useUpdateBatchStatus();
   const createRawMaterial = useCreateRawMaterial();
+  const adjustRawMaterial = useAdjustRawMaterial();
 
   // Forms
   const batchForm = useForm<BatchForm>({
@@ -111,6 +122,11 @@ export default function ProductionPage() {
   const rawMatForm = useForm<RawMaterialForm>({
     resolver: zodResolver(rawMaterialSchema),
     defaultValues: { unit: "kg", current_stock: 0, reorder_level: 5, cost_per_unit: 0 },
+  });
+
+  const adjustRawMatForm = useForm<AdjustRawMatForm>({
+    resolver: zodResolver(adjustRawMatSchema),
+    defaultValues: { quantity: 0, reason: "" },
   });
 
   // Derived
@@ -139,10 +155,28 @@ export default function ProductionPage() {
     await updateBatchStatus.mutateAsync({ id: batchId, status });
   }
 
+  function openAdjustRawMatModal(material: RawMaterial) {
+    setSelectedMaterial(material);
+    adjustRawMatForm.reset({ quantity: 0, reason: "" });
+    openModal("adjustRawMaterial");
+  }
+
+  async function onAdjustRawMaterial(data: AdjustRawMatForm) {
+    if (!selectedMaterial) return;
+    await adjustRawMaterial.mutateAsync({
+      id: selectedMaterial.id,
+      quantity: data.quantity,
+      reason: data.reason,
+    });
+    adjustRawMatForm.reset();
+    setSelectedMaterial(null);
+    closeModal("adjustRawMaterial");
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6 max-w-7xl">
+    <div className="space-y-6 w-full flex-1">
       {/* ── Stats Row ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
@@ -299,7 +333,12 @@ export default function ProductionPage() {
             </Card>
           ) : (
             rawMaterials?.map((mat, i) => (
-              <RawMaterialRow key={mat.id} material={mat} index={i} />
+              <RawMaterialRow
+                key={mat.id}
+                material={mat}
+                index={i}
+                onAdjust={() => openAdjustRawMatModal(mat)}
+              />
             ))
           )}
         </TabsContent>
@@ -372,6 +411,116 @@ export default function ProductionPage() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Adjust Raw Material Dialog ── */}
+      <Dialog
+        open={modals["adjustRawMaterial"]}
+        onOpenChange={(o) => !o && closeModal("adjustRawMaterial")}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Adjust Raw Material Stock</DialogTitle>
+          </DialogHeader>
+          {selectedMaterial && (
+            <div className="space-y-4">
+              <div className="p-3 bg-muted rounded-lg">
+                <p className="text-sm font-semibold">{selectedMaterial.name}</p>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <span className="text-sm font-bold">
+                    Current: {selectedMaterial.current_stock} {selectedMaterial.unit}
+                  </span>
+                  {selectedMaterial.is_low_stock && (
+                    <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                      Low Stock
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Reorder level: {selectedMaterial.reorder_level} {selectedMaterial.unit}
+                </p>
+              </div>
+
+              <form
+                onSubmit={adjustRawMatForm.handleSubmit(onAdjustRawMaterial)}
+                className="space-y-4"
+              >
+                <div className="space-y-1.5">
+                  <Label>Quantity Change</Label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() =>
+                        adjustRawMatForm.setValue(
+                          "quantity",
+                          -Math.abs(adjustRawMatForm.getValues("quantity")),
+                        )
+                      }
+                    >
+                      <ArrowDownCircle className="w-4 h-4 text-red-500" />
+                    </Button>
+                    <Input
+                      type="number"
+                      step="0.001"
+                      {...adjustRawMatForm.register("quantity", { valueAsNumber: true })}
+                      className="text-center font-mono"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() =>
+                        adjustRawMatForm.setValue(
+                          "quantity",
+                          Math.abs(adjustRawMatForm.getValues("quantity")),
+                        )
+                      }
+                    >
+                      <ArrowUpCircle className="w-4 h-4 text-green-500" />
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Positive = add stock · Negative = remove stock
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Reason *</Label>
+                  <Input
+                    {...adjustRawMatForm.register("reason")}
+                    placeholder="e.g. Received from supplier"
+                  />
+                  {adjustRawMatForm.formState.errors.reason && (
+                    <p className="text-xs text-destructive">
+                      {adjustRawMatForm.formState.errors.reason.message}
+                    </p>
+                  )}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedMaterial(null);
+                      closeModal("adjustRawMaterial");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={adjustRawMaterial.isPending}>
+                    {adjustRawMaterial.isPending && (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />
+                    )}
+                    Adjust Stock
+                  </Button>
+                </div>
+              </form>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -567,7 +716,15 @@ function BatchCard({
   );
 }
 
-function RawMaterialRow({ material, index }: { material: RawMaterial; index: number }) {
+function RawMaterialRow({
+  material,
+  index,
+  onAdjust,
+}: {
+  material: RawMaterial;
+  index: number;
+  onAdjust: () => void;
+}) {
   const pct = material.reorder_level > 0
     ? Math.min(100, Math.round((material.current_stock / (material.reorder_level * 3)) * 100))
     : 100;
@@ -606,9 +763,17 @@ function RawMaterialRow({ material, index }: { material: RawMaterial; index: num
                 <p className="text-[10px] text-muted-foreground mt-0.5">Supplier: {material.supplier}</p>
               )}
             </div>
-            <div className="text-right shrink-0">
+            <div className="text-right shrink-0 space-y-1">
               <p className="text-xs font-medium">₹{material.cost_per_unit}/{material.unit}</p>
               <p className="text-[10px] text-muted-foreground">per unit</p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-[11px] px-2"
+                onClick={onAdjust}
+              >
+                Adjust
+              </Button>
             </div>
           </div>
         </CardContent>

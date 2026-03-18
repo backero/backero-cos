@@ -4,6 +4,7 @@ import type {
   Attendance,
   AuthResponse,
   AuthUser,
+  ComplianceTask,
   DashboardKPIs,
   Department,
   Employee,
@@ -145,6 +146,7 @@ export const api = {
       clientFetch<Task>(`/tasks/${id}/complete`, { method: "POST" }),
     delete: (id: string) =>
       clientFetch<{ message: string }>(`/tasks/${id}`, { method: "DELETE" }),
+    compliance: () => clientFetch<ComplianceTask[]>("/tasks/compliance"),
   },
 
   // Finance

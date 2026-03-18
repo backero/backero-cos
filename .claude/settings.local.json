@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(python -c \"import app.main\")",
+      "Bash(python -c \":*)",
+      "Bash(find /d/Development/Internal/backero-cos/frontend/src -type f \\\\\\(-name *.ts -o -name *.tsx -o -name *.js -o -name *.jsx \\\\\\))",
+      "Bash(find /d/Development/Internal/backero-cos/frontend -maxdepth 1 -type f \\\\\\(-name *.json -o -name *.ts -o -name *.config.* \\\\\\))",
+      "Bash(find /d/Development/Internal/backero-cos/frontend/src -name *.css)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

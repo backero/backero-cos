@@ -40,6 +40,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   useAdjustStock,
+  useCreatePlatformOrder,
   useCreateProduct,
   usePlatformSummary,
   useProducts,
@@ -76,8 +77,19 @@ const adjustSchema = z.object({
   reason: z.string().min(2, "Reason required"),
 });
 
+const platformOrderSchema = z.object({
+  platform: z.enum(["amazon", "flipkart", "meesho", "website", "offline"]),
+  order_id: z.string().min(1, "Order ID required"),
+  product_name: z.string().min(1, "Product name required"),
+  quantity: z.number().min(1, "Quantity must be at least 1"),
+  amount: z.number().min(0, "Amount required"),
+  status: z.enum(["pending", "shipped", "delivered", "returned", "cancelled"]).default("pending"),
+  order_date: z.string().min(1, "Order date required"),
+});
+
 type ProductForm = z.infer<typeof productSchema>;
 type AdjustForm = z.infer<typeof adjustSchema>;
+type PlatformOrderForm = z.infer<typeof platformOrderSchema>;
 
 // ── Page Component ────────────────────────────────────────────────────────────
 
@@ -97,6 +109,7 @@ export default function InventoryPage() {
   // Mutations
   const createProduct = useCreateProduct();
   const adjustStock = useAdjustStock();
+  const createPlatformOrder = useCreatePlatformOrder();
 
   // Forms
   const productForm = useForm<ProductForm>({
@@ -114,6 +127,19 @@ export default function InventoryPage() {
   const adjustForm = useForm<AdjustForm>({
     resolver: zodResolver(adjustSchema),
     defaultValues: { quantity: 0, reason: "" },
+  });
+
+  const platformOrderForm = useForm<PlatformOrderForm>({
+    resolver: zodResolver(platformOrderSchema),
+    defaultValues: {
+      platform: "amazon",
+      order_id: "",
+      product_name: "",
+      quantity: 1,
+      amount: 0,
+      status: "pending",
+      order_date: format(new Date(), "yyyy-MM-dd"),
+    },
   });
 
   // Derived data
@@ -147,10 +173,24 @@ export default function InventoryPage() {
     openModal("adjustStock");
   }
 
+  async function onLogPlatformOrder(data: PlatformOrderForm) {
+    await createPlatformOrder.mutateAsync(data as Record<string, unknown>);
+    platformOrderForm.reset({
+      platform: "amazon",
+      order_id: "",
+      product_name: "",
+      quantity: 1,
+      amount: 0,
+      status: "pending",
+      order_date: format(new Date(), "yyyy-MM-dd"),
+    });
+    closeModal("logOrder");
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6 max-w-7xl">
+    <div className="space-y-6 w-full flex-1">
       {/* ── Low Stock Alert Banner ── */}
       <AnimatePresence>
         {lowStockProducts.length > 0 && (
@@ -186,9 +226,14 @@ export default function InventoryPage() {
 
       {/* ── Today's Platform Order Summary ── */}
       <div>
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-          Today's Orders by Platform
-        </h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            Today's Orders by Platform
+          </h3>
+          <Button size="sm" variant="outline" onClick={() => openModal("logOrder")}>
+            <Plus className="w-4 h-4 mr-1.5" /> Log Order
+          </Button>
+        </div>
         {platformLoading ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -468,6 +513,152 @@ export default function InventoryPage() {
                   <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />
                 )}
                 Create Product
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Log Platform Order Dialog ── */}
+      <Dialog
+        open={modals["logOrder"]}
+        onOpenChange={(o) => !o && closeModal("logOrder")}
+      >
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Log Platform Order</DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={platformOrderForm.handleSubmit(onLogPlatformOrder)}
+            className="space-y-4"
+          >
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Platform *</Label>
+                <Select
+                  defaultValue="amazon"
+                  onValueChange={(v) =>
+                    platformOrderForm.setValue(
+                      "platform",
+                      v as PlatformOrderForm["platform"],
+                    )
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(["amazon", "flipkart", "meesho", "website", "offline"] as const).map((p) => (
+                      <SelectItem key={p} value={p} className="capitalize">
+                        {p}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Order ID *</Label>
+                <Input
+                  {...platformOrderForm.register("order_id")}
+                  placeholder="e.g. AMZ-12345"
+                />
+                {platformOrderForm.formState.errors.order_id && (
+                  <p className="text-xs text-destructive">
+                    {platformOrderForm.formState.errors.order_id.message}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Product Name *</Label>
+              <Input
+                {...platformOrderForm.register("product_name")}
+                placeholder="e.g. Rose Face Cream 50g"
+              />
+              {platformOrderForm.formState.errors.product_name && (
+                <p className="text-xs text-destructive">
+                  {platformOrderForm.formState.errors.product_name.message}
+                </p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Quantity *</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  {...platformOrderForm.register("quantity", { valueAsNumber: true })}
+                />
+                {platformOrderForm.formState.errors.quantity && (
+                  <p className="text-xs text-destructive">
+                    {platformOrderForm.formState.errors.quantity.message}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label>Amount (₹) *</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  {...platformOrderForm.register("amount", { valueAsNumber: true })}
+                />
+                {platformOrderForm.formState.errors.amount && (
+                  <p className="text-xs text-destructive">
+                    {platformOrderForm.formState.errors.amount.message}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Status</Label>
+                <Select
+                  defaultValue="pending"
+                  onValueChange={(v) =>
+                    platformOrderForm.setValue(
+                      "status",
+                      v as PlatformOrderForm["status"],
+                    )
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(["pending", "shipped", "delivered", "returned", "cancelled"] as const).map((s) => (
+                      <SelectItem key={s} value={s} className="capitalize">
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Order Date *</Label>
+                <Input
+                  type="date"
+                  {...platformOrderForm.register("order_date")}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => closeModal("logOrder")}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createPlatformOrder.isPending}>
+                {createPlatformOrder.isPending && (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />
+                )}
+                Log Order
               </Button>
             </div>
           </form>

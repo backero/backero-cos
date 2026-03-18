@@ -70,7 +70,7 @@ export interface Task {
   department_id?: string | null;
   extension_requested: boolean;
   extension_reason?: string | null;
-  extension_days: number;
+  extension_days: number | null;
   created_at: string;
 }
 
@@ -79,10 +79,10 @@ export interface ComplianceTask {
   title: string;
   description?: string | null;
   due_date: string;
-  recurrence: "monthly" | "quarterly" | "annual";
+  recurrence?: "monthly" | "quarterly" | "annual" | null;
   is_completed: boolean;
   completed_at?: string | null;
-  category: "gst" | "tds" | "roc" | "other";
+  category?: "gst" | "tds" | "roc" | "other" | null;
 }
 
 // ── Finance ─────────────────────────────────────────────────────────────────
