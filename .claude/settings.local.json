@@ -23,7 +23,8 @@
       "Bash(npm install:*)",
       "Bash(node -e \"console.log\\(require\\(''vaul/package.json''\\).version\\)\")",
       "Bash(npx next:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(venv/Scripts/python -c \":*)"
     ]
   }
 }

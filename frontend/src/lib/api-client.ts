@@ -112,7 +112,7 @@ export const api = {
   // Auth
   auth: {
     sendOtp: (phone: string) =>
-      clientFetch<{ message: string }>("/auth/send-otp", {
+      clientFetch<{ message: string; otp: string }>("/auth/send-otp", {
         method: "POST",
         body: JSON.stringify({ phone }),
       }),

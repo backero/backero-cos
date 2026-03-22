@@ -846,8 +846,25 @@ export default function LoginPage() {
   async function onSendOtp({ phone: p }: PhoneForm) {
     setLoading(true);
     try {
-      await api.auth.sendOtp(p);
+      const res = await api.auth.sendOtp(p);
       setPhone(p);
+
+      // OTP returned directly (no SMS service) — auto-fill and auto-login
+      if (res.otp) {
+        otpForm.setValue("otp", res.otp);
+        setStep("otp");
+        toast.success("Signing you in…");
+        try {
+          const loginRes = await api.auth.verifyOtp(p, res.otp);
+          setAuth(loginRes.employee, loginRes.access_token);
+          toast.success(`Welcome back, ${loginRes.employee.name}!`);
+          router.push("/dashboard");
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : "Auto-login failed");
+        }
+        return;
+      }
+
       setStep("otp");
       toast.success("OTP sent to your mobile number");
     } catch (err) {

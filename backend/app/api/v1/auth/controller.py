@@ -10,8 +10,8 @@ from .schema import ProfileUpdate, RefreshRequest, SendOTPRequest, VerifyOTPRequ
 
 
 async def send_otp(body: SendOTPRequest, db: AsyncSession = Depends(get_db)):
-    await service.send_otp(db, body.phone)
-    return {"message": "OTP sent successfully"}
+    otp = await service.send_otp(db, body.phone)
+    return {"message": "OTP sent successfully", "otp": otp}
 
 
 async def verify_otp(body: VerifyOTPRequest, response: Response, db: AsyncSession = Depends(get_db)):
