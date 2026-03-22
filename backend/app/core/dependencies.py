@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Cookie, Depends, HTTPException, status
+from fastapi import Cookie, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -12,6 +12,7 @@ from jose import JWTError
 
 
 async def get_current_user(
+    request: Request,
     access_token: str | None = Cookie(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> Employee:
@@ -20,8 +21,15 @@ async def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    if not access_token:
+    # Cookie takes priority; fall back to Authorization: Bearer <token> header
+    token = access_token
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+    if not token:
         raise credentials_exc
+    access_token = token
     try:
         payload = decode_token(access_token)
         if payload.get("type") != "access":
