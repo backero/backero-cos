@@ -21,7 +21,7 @@ class EmployeeCreate(BaseModel):
     name: str
     phone: str
     email: Optional[str] = None
-    role: str = "employee"
+    role_id: Optional[UUID] = None       # dynamic role assignment
     designation: Optional[str] = None
     department_id: Optional[str] = None
     salary: Optional[float] = None
@@ -31,7 +31,7 @@ class EmployeeCreate(BaseModel):
 class EmployeeUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
-    role: Optional[str] = None
+    role_id: Optional[UUID] = None
     designation: Optional[str] = None
     department_id: Optional[str] = None
     salary: Optional[float] = None
@@ -43,7 +43,8 @@ class EmployeeResponse(BaseModel):
     name: str
     phone: str
     email: Optional[str] = None
-    role: str
+    role: str                            # role name (display)
+    role_id: Optional[UUID] = None
     designation: Optional[str] = None
     department_id: Optional[UUID] = None
     department_name: Optional[str] = None
@@ -59,6 +60,7 @@ class CheckInRequest(BaseModel):
 
 
 class AttendanceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: UUID
     employee_id: UUID
     date: date

@@ -26,6 +26,7 @@ def _employee_response(emp: Employee) -> EmployeeResponse:
         phone=emp.phone,
         email=emp.email,
         role=emp.role,
+        role_id=emp.role_id,
         designation=emp.designation,
         department_id=emp.department_id,
         department_name=emp.department.name if emp.department else None,
@@ -47,6 +48,9 @@ async def list_departments(db: AsyncSession) -> list[DepartmentResponse]:
 
 
 async def create_department(db: AsyncSession, body: DepartmentCreate) -> DepartmentResponse:
+    existing = await db.execute(select(Department).where(Department.name == body.name))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Department '{body.name}' already exists.", headers={"X-Field": "name"})
     dept = Department(name=body.name, description=body.description)
     db.add(dept)
     await db.flush()
@@ -69,15 +73,27 @@ async def list_employees(
 
 
 async def create_employee(db: AsyncSession, body: EmployeeCreate) -> EmployeeResponse:
+    from app.api.v1.roles.model import Role
+
     existing = await db.execute(select(Employee).where(Employee.phone == body.phone))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Phone number already registered")
+
+    # Resolve role name from role_id
+    role_name = "Employee"
+    if body.role_id:
+        role_result = await db.execute(select(Role).where(Role.id == body.role_id))
+        role_obj = role_result.scalar_one_or_none()
+        if not role_obj:
+            raise HTTPException(status_code=400, detail="Invalid role_id")
+        role_name = role_obj.name
 
     emp = Employee(
         name=body.name,
         phone=body.phone,
         email=body.email,
-        role=body.role,
+        role=role_name,
+        role_id=body.role_id,
         designation=body.designation,
         department_id=uuid.UUID(body.department_id) if body.department_id else None,
         salary=body.salary,
@@ -85,6 +101,7 @@ async def create_employee(db: AsyncSession, body: EmployeeCreate) -> EmployeeRes
     )
     db.add(emp)
     await db.flush()
+    await db.refresh(emp, ["department"])
     return _employee_response(emp)
 
 
@@ -99,12 +116,26 @@ async def get_employee(db: AsyncSession, employee_id: str) -> EmployeeResponse:
 
 
 async def update_employee(db: AsyncSession, employee_id: str, body: EmployeeUpdate) -> EmployeeResponse:
-    result = await db.execute(select(Employee).where(Employee.id == uuid.UUID(employee_id)))
+    from app.api.v1.roles.model import Role
+
+    result = await db.execute(
+        select(Employee).options(selectinload(Employee.department)).where(Employee.id == uuid.UUID(employee_id))
+    )
     emp = result.scalar_one_or_none()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
 
-    for field, value in body.model_dump(exclude_none=True).items():
+    updates = body.model_dump(exclude_none=True)
+
+    if "role_id" in updates:
+        role_result = await db.execute(select(Role).where(Role.id == updates["role_id"]))
+        role_obj = role_result.scalar_one_or_none()
+        if not role_obj:
+            raise HTTPException(status_code=400, detail="Invalid role_id")
+        emp.role_id = updates.pop("role_id")
+        emp.role = role_obj.name
+
+    for field, value in updates.items():
         if field == "department_id" and value:
             value = uuid.UUID(value)
         setattr(emp, field, value)

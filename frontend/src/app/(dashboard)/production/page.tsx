@@ -9,7 +9,6 @@ import {
   AlertTriangle,
   ArrowDownCircle,
   ArrowUpCircle,
-  BarChart3,
   CheckCircle2,
   Clock,
   Factory,
@@ -21,8 +20,16 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetBody,
+  SheetFooter,
+} from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -100,20 +107,17 @@ export default function ProductionPage() {
   const [selectedBatch, setSelectedBatch] = useState<ProductionBatch | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<RawMaterial | null>(null);
 
-  // Queries
   const { data: batches, isLoading: batchesLoading } = useBatches({
     status: statusFilter || undefined,
   });
   const { data: rawMaterials, isLoading: rawMatsLoading } = useRawMaterials();
   const { data: products } = useProducts();
 
-  // Mutations
   const createBatch = useCreateBatch();
   const updateBatchStatus = useUpdateBatchStatus();
   const createRawMaterial = useCreateRawMaterial();
   const adjustRawMaterial = useAdjustRawMaterial();
 
-  // Forms
   const batchForm = useForm<BatchForm>({
     resolver: zodResolver(batchSchema),
     defaultValues: { planned_quantity: 0 },
@@ -129,7 +133,6 @@ export default function ProductionPage() {
     defaultValues: { quantity: 0, reason: "" },
   });
 
-  // Derived
   const lowStockMaterials = rawMaterials?.filter((m) => m.is_low_stock) ?? [];
   const batchStats = {
     planned: batches?.filter((b) => b.status === "planned").length ?? 0,
@@ -138,7 +141,6 @@ export default function ProductionPage() {
     rejected: batches?.filter((b) => b.status === "rejected").length ?? 0,
   };
 
-  // Handlers
   async function onCreateBatch(data: BatchForm) {
     await createBatch.mutateAsync(data as Record<string, unknown>);
     batchForm.reset();
@@ -172,8 +174,6 @@ export default function ProductionPage() {
     setSelectedMaterial(null);
     closeModal("adjustRawMaterial");
   }
-
-  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6 w-full flex-1">
@@ -237,16 +237,7 @@ export default function ProductionPage() {
             </TabsTrigger>
           </TabsList>
           <div className="flex items-center gap-2">
-            <Tabs value="batches">
-              <TabsContent value="batches" asChild>
-                <></>
-              </TabsContent>
-            </Tabs>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => openModal("createRawMaterial")}
-            >
+            <Button size="sm" variant="outline" onClick={() => openModal("createRawMaterial")}>
               <Plus className="w-4 h-4 mr-1" /> Raw Material
             </Button>
             <Button size="sm" onClick={() => openModal("createBatch")}>
@@ -257,7 +248,6 @@ export default function ProductionPage() {
 
         {/* ── Batches Tab ── */}
         <TabsContent value="batches" className="space-y-4">
-          {/* Status filter */}
           <div className="flex items-center gap-2">
             {["", ...BATCH_STATUSES].map((s) => (
               <button
@@ -286,12 +276,7 @@ export default function ProductionPage() {
               <CardContent className="py-16 text-center">
                 <Factory className="w-12 h-12 mx-auto mb-3 text-muted-foreground/30" />
                 <p className="text-muted-foreground">No production batches found</p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-3"
-                  onClick={() => openModal("createBatch")}
-                >
+                <Button size="sm" variant="outline" className="mt-3" onClick={() => openModal("createBatch")}>
                   Create first batch
                 </Button>
               </CardContent>
@@ -321,12 +306,7 @@ export default function ProductionPage() {
               <CardContent className="py-16 text-center">
                 <Package className="w-12 h-12 mx-auto mb-3 text-muted-foreground/30" />
                 <p className="text-muted-foreground">No raw materials tracked yet</p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-3"
-                  onClick={() => openModal("createRawMaterial")}
-                >
+                <Button size="sm" variant="outline" className="mt-3" onClick={() => openModal("createRawMaterial")}>
                   Add first material
                 </Button>
               </CardContent>
@@ -344,108 +324,165 @@ export default function ProductionPage() {
         </TabsContent>
       </Tabs>
 
-      {/* ── Create Batch Dialog ── */}
-      <Dialog open={modals["createBatch"]} onOpenChange={(o) => !o && closeModal("createBatch")}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Create Production Batch</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={batchForm.handleSubmit(onCreateBatch)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
+      {/* ── Create Batch Sheet ── */}
+      <Sheet open={modals["createBatch"]} onOpenChange={(o) => !o && closeModal("createBatch")}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Create Production Batch</SheetTitle>
+            <SheetDescription>Schedule a new manufacturing batch for a product.</SheetDescription>
+          </SheetHeader>
+          <form onSubmit={batchForm.handleSubmit(onCreateBatch)} className="flex flex-col flex-1 overflow-hidden">
+            <SheetBody className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Batch Number *</Label>
+                  <Input {...batchForm.register("batch_number")} placeholder="e.g. BATCH-2025-001" />
+                  {batchForm.formState.errors.batch_number && (
+                    <p className="text-xs text-destructive">{batchForm.formState.errors.batch_number.message}</p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Planned Qty *</Label>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    {...batchForm.register("planned_quantity", { valueAsNumber: true })}
+                    placeholder="e.g. 500"
+                  />
+                </div>
+              </div>
               <div className="space-y-1.5">
-                <Label>Batch Number *</Label>
-                <Input {...batchForm.register("batch_number")} placeholder="e.g. BATCH-2025-001" />
-                {batchForm.formState.errors.batch_number && (
-                  <p className="text-xs text-destructive">{batchForm.formState.errors.batch_number.message}</p>
+                <Label>Product *</Label>
+                <Select onValueChange={(v) => batchForm.setValue("product_id", v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a product..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {products?.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name} ({p.sku})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {batchForm.formState.errors.product_id && (
+                  <p className="text-xs text-destructive">{batchForm.formState.errors.product_id.message}</p>
                 )}
               </div>
-              <div className="space-y-1.5">
-                <Label>Planned Qty *</Label>
-                <Input
-                  type="number"
-                  step="0.001"
-                  {...batchForm.register("planned_quantity", { valueAsNumber: true })}
-                  placeholder="e.g. 500"
-                />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Product *</Label>
-              <Select onValueChange={(v) => batchForm.setValue("product_id", v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a product..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {products?.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name} ({p.sku})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {batchForm.formState.errors.product_id && (
-                <p className="text-xs text-destructive">{batchForm.formState.errors.product_id.message}</p>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Start Date</Label>
-                <Input type="date" {...batchForm.register("start_date")} />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Start Date</Label>
+                  <Input type="date" {...batchForm.register("start_date")} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Target End Date</Label>
+                  <Input type="date" {...batchForm.register("end_date")} />
+                </div>
               </div>
               <div className="space-y-1.5">
-                <Label>Target End Date</Label>
-                <Input type="date" {...batchForm.register("end_date")} />
+                <Label>Notes</Label>
+                <Textarea {...batchForm.register("notes")} placeholder="Optional batch notes..." rows={2} />
               </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Notes</Label>
-              <Textarea {...batchForm.register("notes")} placeholder="Optional batch notes..." rows={2} />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => closeModal("createBatch")}>
-                Cancel
-              </Button>
+            </SheetBody>
+            <SheetFooter>
+              <Button type="button" variant="outline" onClick={() => closeModal("createBatch")}>Cancel</Button>
               <Button type="submit" disabled={createBatch.isPending}>
                 {createBatch.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}
                 Create Batch
               </Button>
-            </div>
+            </SheetFooter>
           </form>
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
 
-      {/* ── Adjust Raw Material Dialog ── */}
-      <Dialog
-        open={modals["adjustRawMaterial"]}
-        onOpenChange={(o) => !o && closeModal("adjustRawMaterial")}
-      >
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Adjust Raw Material Stock</DialogTitle>
-          </DialogHeader>
-          {selectedMaterial && (
-            <div className="space-y-4">
-              <div className="p-3 bg-muted rounded-lg">
-                <p className="text-sm font-semibold">{selectedMaterial.name}</p>
-                <div className="flex items-center gap-2 mt-1.5">
-                  <span className="text-sm font-bold">
-                    Current: {selectedMaterial.current_stock} {selectedMaterial.unit}
-                  </span>
-                  {selectedMaterial.is_low_stock && (
-                    <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
-                      Low Stock
-                    </Badge>
+      {/* ── Add Raw Material Sheet ── */}
+      <Sheet open={modals["createRawMaterial"]} onOpenChange={(o) => !o && closeModal("createRawMaterial")}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Add Raw Material</SheetTitle>
+            <SheetDescription>Track a new ingredient or material used in production.</SheetDescription>
+          </SheetHeader>
+          <form onSubmit={rawMatForm.handleSubmit(onCreateRawMaterial)} className="flex flex-col flex-1 overflow-hidden">
+            <SheetBody className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5 col-span-2">
+                  <Label>Material Name *</Label>
+                  <Input {...rawMatForm.register("name")} placeholder="e.g. Rose Extract" />
+                  {rawMatForm.formState.errors.name && (
+                    <p className="text-xs text-destructive">{rawMatForm.formState.errors.name.message}</p>
                   )}
                 </div>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Reorder level: {selectedMaterial.reorder_level} {selectedMaterial.unit}
-                </p>
+                <div className="space-y-1.5">
+                  <Label>Unit</Label>
+                  <Select defaultValue="kg" onValueChange={(v) => rawMatForm.setValue("unit", v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {["kg", "g", "L", "ml", "pcs", "box"].map((u) => (
+                        <SelectItem key={u} value={u}>{u}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Current Stock</Label>
+                  <Input type="number" step="0.001" {...rawMatForm.register("current_stock", { valueAsNumber: true })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Reorder Level</Label>
+                  <Input type="number" step="0.001" {...rawMatForm.register("reorder_level", { valueAsNumber: true })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Cost / Unit (₹)</Label>
+                  <Input type="number" step="0.01" {...rawMatForm.register("cost_per_unit", { valueAsNumber: true })} />
+                </div>
+                <div className="space-y-1.5 col-span-2">
+                  <Label>Supplier</Label>
+                  <Input {...rawMatForm.register("supplier")} placeholder="Optional supplier name" />
+                </div>
               </div>
+              <div className="space-y-1.5">
+                <Label>Notes</Label>
+                <Textarea {...rawMatForm.register("notes")} rows={2} placeholder="Optional notes..." />
+              </div>
+            </SheetBody>
+            <SheetFooter>
+              <Button type="button" variant="outline" onClick={() => closeModal("createRawMaterial")}>Cancel</Button>
+              <Button type="submit" disabled={createRawMaterial.isPending}>
+                {createRawMaterial.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}
+                Add Material
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
 
-              <form
-                onSubmit={adjustRawMatForm.handleSubmit(onAdjustRawMaterial)}
-                className="space-y-4"
-              >
+      {/* ── Adjust Raw Material Sheet ── */}
+      <Sheet open={modals["adjustRawMaterial"]} onOpenChange={(o) => !o && closeModal("adjustRawMaterial")}>
+        <SheetContent className="max-w-[400px]">
+          <SheetHeader>
+            <SheetTitle>Adjust Raw Material Stock</SheetTitle>
+            <SheetDescription>
+              {selectedMaterial ? `Update stock for ${selectedMaterial.name}` : "Select a material to adjust"}
+            </SheetDescription>
+          </SheetHeader>
+          {selectedMaterial && (
+            <form onSubmit={adjustRawMatForm.handleSubmit(onAdjustRawMaterial)} className="flex flex-col flex-1 overflow-hidden">
+              <SheetBody className="space-y-4">
+                <div className="p-4 bg-muted/60 rounded-xl border border-border">
+                  <p className="text-sm font-semibold">{selectedMaterial.name}</p>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <span className="text-sm font-bold">
+                      Current: {selectedMaterial.current_stock} {selectedMaterial.unit}
+                    </span>
+                    {selectedMaterial.is_low_stock && (
+                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Low Stock</Badge>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Reorder level: {selectedMaterial.reorder_level} {selectedMaterial.unit}
+                  </p>
+                </div>
+
                 <div className="space-y-1.5">
                   <Label>Quantity Change</Label>
                   <div className="flex items-center gap-2">
@@ -454,12 +491,7 @@ export default function ProductionPage() {
                       variant="outline"
                       size="sm"
                       className="shrink-0"
-                      onClick={() =>
-                        adjustRawMatForm.setValue(
-                          "quantity",
-                          -Math.abs(adjustRawMatForm.getValues("quantity")),
-                        )
-                      }
+                      onClick={() => adjustRawMatForm.setValue("quantity", -Math.abs(adjustRawMatForm.getValues("quantity")))}
                     >
                       <ArrowDownCircle className="w-4 h-4 text-red-500" />
                     </Button>
@@ -474,12 +506,7 @@ export default function ProductionPage() {
                       variant="outline"
                       size="sm"
                       className="shrink-0"
-                      onClick={() =>
-                        adjustRawMatForm.setValue(
-                          "quantity",
-                          Math.abs(adjustRawMatForm.getValues("quantity")),
-                        )
-                      }
+                      onClick={() => adjustRawMatForm.setValue("quantity", Math.abs(adjustRawMatForm.getValues("quantity")))}
                     >
                       <ArrowUpCircle className="w-4 h-4 text-green-500" />
                     </Button>
@@ -490,114 +517,29 @@ export default function ProductionPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label>Reason *</Label>
-                  <Input
-                    {...adjustRawMatForm.register("reason")}
-                    placeholder="e.g. Received from supplier"
-                  />
+                  <Input {...adjustRawMatForm.register("reason")} placeholder="e.g. Received from supplier" />
                   {adjustRawMatForm.formState.errors.reason && (
-                    <p className="text-xs text-destructive">
-                      {adjustRawMatForm.formState.errors.reason.message}
-                    </p>
+                    <p className="text-xs text-destructive">{adjustRawMatForm.formState.errors.reason.message}</p>
                   )}
                 </div>
-                <div className="flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setSelectedMaterial(null);
-                      closeModal("adjustRawMaterial");
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={adjustRawMaterial.isPending}>
-                    {adjustRawMaterial.isPending && (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />
-                    )}
-                    Adjust Stock
-                  </Button>
-                </div>
-              </form>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Create Raw Material Dialog ── */}
-      <Dialog open={modals["createRawMaterial"]} onOpenChange={(o) => !o && closeModal("createRawMaterial")}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Raw Material</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={rawMatForm.handleSubmit(onCreateRawMaterial)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5 col-span-2">
-                <Label>Material Name *</Label>
-                <Input {...rawMatForm.register("name")} placeholder="e.g. Rose Extract" />
-                {rawMatForm.formState.errors.name && (
-                  <p className="text-xs text-destructive">{rawMatForm.formState.errors.name.message}</p>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                <Label>Unit</Label>
-                <Select
-                  defaultValue="kg"
-                  onValueChange={(v) => rawMatForm.setValue("unit", v)}
+              </SheetBody>
+              <SheetFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => { setSelectedMaterial(null); closeModal("adjustRawMaterial"); }}
                 >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {["kg", "g", "L", "ml", "pcs", "box"].map((u) => (
-                      <SelectItem key={u} value={u}>{u}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Current Stock</Label>
-                <Input
-                  type="number"
-                  step="0.001"
-                  {...rawMatForm.register("current_stock", { valueAsNumber: true })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Reorder Level</Label>
-                <Input
-                  type="number"
-                  step="0.001"
-                  {...rawMatForm.register("reorder_level", { valueAsNumber: true })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Cost / Unit (₹)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  {...rawMatForm.register("cost_per_unit", { valueAsNumber: true })}
-                />
-              </div>
-              <div className="space-y-1.5 col-span-2">
-                <Label>Supplier</Label>
-                <Input {...rawMatForm.register("supplier")} placeholder="Optional supplier name" />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Notes</Label>
-              <Textarea {...rawMatForm.register("notes")} rows={2} placeholder="Optional notes..." />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => closeModal("createRawMaterial")}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={createRawMaterial.isPending}>
-                {createRawMaterial.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}
-                Add Material
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={adjustRawMaterial.isPending}>
+                  {adjustRawMaterial.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}
+                  Adjust Stock
+                </Button>
+              </SheetFooter>
+            </form>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -629,7 +571,6 @@ function BatchCard({
     >
       <Card className="overflow-hidden hover:shadow-md transition-shadow">
         <CardContent className="p-5 space-y-4">
-          {/* Header */}
           <div className="flex items-start justify-between">
             <div>
               <div className="flex items-center gap-2">
@@ -643,13 +584,10 @@ function BatchCard({
             </Badge>
           </div>
 
-          {/* Quantity / Progress */}
           <div className="space-y-1.5">
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Production Progress</span>
-              <span className="font-medium">
-                {batch.produced_quantity} / {batch.planned_quantity} units
-              </span>
+              <span className="font-medium">{batch.produced_quantity} / {batch.planned_quantity} units</span>
             </div>
             <Progress value={progress} className="h-2" />
             <div className="flex justify-between text-[10px] text-muted-foreground">
@@ -658,7 +596,6 @@ function BatchCard({
             </div>
           </div>
 
-          {/* Dates */}
           {(batch.start_date || batch.end_date) && (
             <div className="flex gap-4 text-xs text-muted-foreground">
               {batch.start_date && <span>Start: {formatDate(batch.start_date)}</span>}
@@ -666,14 +603,10 @@ function BatchCard({
             </div>
           )}
 
-          {/* Notes */}
           {batch.notes && (
-            <p className="text-xs text-muted-foreground italic border-l-2 border-border pl-2">
-              {batch.notes}
-            </p>
+            <p className="text-xs text-muted-foreground italic border-l-2 border-border pl-2">{batch.notes}</p>
           )}
 
-          {/* Status Actions */}
           {batch.status !== "completed" && batch.status !== "rejected" && (
             <div className="flex gap-2 pt-1">
               {batch.status === "planned" && (
@@ -745,10 +678,7 @@ function RawMaterialRow({
               <div className="flex items-center gap-2 mb-1">
                 <p className="text-sm font-medium truncate">{material.name}</p>
                 {material.is_low_stock && (
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] px-1.5 py-0 text-orange-600 border-orange-300 dark:border-orange-700 dark:text-orange-400 shrink-0"
-                  >
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-orange-600 border-orange-300 dark:border-orange-700 dark:text-orange-400 shrink-0">
                     Low
                   </Badge>
                 )}
@@ -766,12 +696,7 @@ function RawMaterialRow({
             <div className="text-right shrink-0 space-y-1">
               <p className="text-xs font-medium">₹{material.cost_per_unit}/{material.unit}</p>
               <p className="text-[10px] text-muted-foreground">per unit</p>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-[11px] px-2"
-                onClick={onAdjust}
-              >
+              <Button size="sm" variant="outline" className="h-7 text-[11px] px-2" onClick={onAdjust}>
                 Adjust
               </Button>
             </div>

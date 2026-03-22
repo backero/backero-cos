@@ -6,7 +6,7 @@ from app.core.dependencies import CurrentUser
 from app.db.session import get_db
 
 from . import service
-from .schema import RefreshRequest, SendOTPRequest, VerifyOTPRequest
+from .schema import ProfileUpdate, RefreshRequest, SendOTPRequest, VerifyOTPRequest
 
 
 async def send_otp(body: SendOTPRequest, db: AsyncSession = Depends(get_db)):
@@ -46,14 +46,10 @@ async def logout(response: Response, current_user: CurrentUser):
 
 
 async def get_me(current_user: CurrentUser):
-    return {
-        "id": str(current_user.id),
-        "name": current_user.name,
-        "phone": current_user.phone,
-        "email": current_user.email,
-        "role": current_user.role,
-        "designation": current_user.designation,
-        "department_id": str(current_user.department_id) if current_user.department_id else None,
-        "avatar_url": current_user.avatar_url,
-        "is_active": current_user.is_active,
-    }
+    from app.api.v1.auth.service import _permissions_for_employee, _employee_dict
+    permissions = await _permissions_for_employee(current_user)
+    return _employee_dict(current_user, permissions)
+
+
+async def update_me(body: ProfileUpdate, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    return await service.update_profile(db, current_user, body.model_dump(exclude_none=True))

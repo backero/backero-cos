@@ -1,16 +1,34 @@
 // ── Auth ────────────────────────────────────────────────────────────────────
-export type Role = "admin" | "manager" | "employee";
+export type Module =
+  | "dashboard"
+  | "tasks"
+  | "finance"
+  | "inventory"
+  | "employees"
+  | "production"
+  | "reports"
+  | "roles";
+
+export interface ModuleAccess {
+  can_view: boolean;
+  can_create: boolean;
+  can_edit: boolean;
+}
+
+export type Permissions = Partial<Record<Module, ModuleAccess>>;
 
 export interface AuthUser {
   id: string;
   name: string;
   phone: string;
   email?: string | null;
-  role: Role;
+  role: string;              // role display name (dynamic)
+  role_id?: string | null;
   designation?: string | null;
   department_id?: string | null;
   avatar_url?: string | null;
   is_active: boolean;
+  permissions: Permissions;  // module → {can_view, can_create, can_edit}
 }
 
 export interface AuthResponse {
@@ -18,6 +36,37 @@ export interface AuthResponse {
   refresh_token: string;
   token_type: string;
   employee: AuthUser;
+}
+
+// ── Roles / Permissions ──────────────────────────────────────────────────────
+export interface RoleModulePermission {
+  module: Module;
+  can_view: boolean;
+  can_create: boolean;
+  can_edit: boolean;
+}
+
+export interface RoleDetail {
+  id: string;
+  name: string;
+  description?: string | null;
+  color: string;
+  is_system: boolean;
+  permissions: RoleModulePermission[];
+}
+
+export interface RoleCreate {
+  name: string;
+  description?: string;
+  color?: string;
+  permissions?: Partial<Record<Module, ModuleAccess>>;
+}
+
+export interface RoleUpdate {
+  name?: string;
+  description?: string;
+  color?: string;
+  permissions?: Partial<Record<Module, ModuleAccess>>;
 }
 
 // ── Employees ───────────────────────────────────────────────────────────────
@@ -32,7 +81,8 @@ export interface Employee {
   name: string;
   phone: string;
   email?: string | null;
-  role: Role;
+  role: string;              // role display name
+  role_id?: string | null;
   designation?: string | null;
   department_id?: string | null;
   department_name?: string | null;

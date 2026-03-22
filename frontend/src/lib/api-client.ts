@@ -1,21 +1,38 @@
 import { toast } from "sonner";
+
+// ── Typed API error ───────────────────────────────────────────────────────────
+
+export class ApiError extends Error {
+  field?: string | null;
+  status: number;
+
+  constructor(message: string, status: number, field?: string | null) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.field = field;
+  }
+}
 import type {
   AccountEntry,
   Attendance,
-  AuthResponse,
   AuthUser,
+  AuthResponse,
   ComplianceTask,
   DashboardKPIs,
   Department,
   Employee,
   FinanceSummary,
   Invoice,
+  Module,
+  ModuleAccess,
   MonthlyTrend,
   PlatformOrder,
   PlatformSummary,
   Product,
   ProductionBatch,
   RawMaterial,
+  RoleDetail,
   Task,
 } from "@/types";
 
@@ -41,7 +58,10 @@ function buildUrl(path: string, params?: FetchOptions["params"]): string {
 }
 
 /** Server-side fetch — uses cookies automatically (Next.js Server Components) */
-export async function serverFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
+export async function serverFetch<T>(
+  path: string,
+  options: FetchOptions = {},
+): Promise<T> {
   const { params, ...init } = options;
   const url = buildUrl(path, params);
   const res = await fetch(url, {
@@ -52,17 +72,21 @@ export async function serverFetch<T>(path: string, options: FetchOptions = {}): 
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "Request failed" }));
-    throw new Error(err.detail || "Request failed");
+    throw new ApiError(err.detail || "Request failed", res.status, err.field ?? null);
   }
   return res.json();
 }
 
 /** Client-side fetch — used inside TanStack Query hooks */
-export async function clientFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
+export async function clientFetch<T>(
+  path: string,
+  options: FetchOptions = {},
+): Promise<T> {
   const { params, ...init } = options;
   const url = buildUrl(path, params);
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
   const res = await fetch(url, {
     ...init,
@@ -76,7 +100,8 @@ export async function clientFetch<T>(path: string, options: FetchOptions = {}): 
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "Request failed" }));
-    throw new Error(err.detail || "Request failed");
+    const field = err.field ?? res.headers.get("X-Field") ?? null;
+    throw new ApiError(err.detail || "Request failed", res.status, field);
   }
   return res.json();
 }
@@ -97,7 +122,8 @@ export const api = {
         body: JSON.stringify({ phone, otp }),
       }),
     me: () => clientFetch<AuthUser>("/auth/me"),
-    logout: () => clientFetch<{ message: string }>("/auth/logout", { method: "POST" }),
+    logout: () =>
+      clientFetch<{ message: string }>("/auth/logout", { method: "POST" }),
     refresh: (refresh_token: string) =>
       clientFetch<{ access_token: string }>("/auth/refresh", {
         method: "POST",
@@ -111,9 +137,15 @@ export const api = {
       clientFetch<Employee[]>("/employees/", { params }),
     get: (id: string) => clientFetch<Employee>(`/employees/${id}`),
     create: (data: Record<string, unknown>) =>
-      clientFetch<Employee>("/employees/", { method: "POST", body: JSON.stringify(data) }),
+      clientFetch<Employee>("/employees/", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
     update: (id: string, data: Record<string, unknown>) =>
-      clientFetch<Employee>(`/employees/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+      clientFetch<Employee>(`/employees/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
     checkIn: (id: string, notes?: string) =>
       clientFetch<Attendance>(`/employees/${id}/check-in`, {
         method: "POST",
@@ -122,7 +154,9 @@ export const api = {
     checkOut: (id: string) =>
       clientFetch<Attendance>(`/employees/${id}/check-out`, { method: "POST" }),
     attendance: (id: string, month?: number, year?: number) =>
-      clientFetch<Attendance[]>(`/employees/${id}/attendance`, { params: { month, year } }),
+      clientFetch<Attendance[]>(`/employees/${id}/attendance`, {
+        params: { month, year },
+      }),
 
     departments: {
       list: () => clientFetch<Department[]>("/employees/departments"),
@@ -136,12 +170,21 @@ export const api = {
 
   // Tasks
   tasks: {
-    list: (params?: { status?: string; priority?: string; assigned_to_id?: string }) =>
-      clientFetch<Task[]>("/tasks/", { params }),
+    list: (params?: {
+      status?: string;
+      priority?: string;
+      assigned_to_id?: string;
+    }) => clientFetch<Task[]>("/tasks/", { params }),
     create: (data: Record<string, unknown>) =>
-      clientFetch<Task>("/tasks/", { method: "POST", body: JSON.stringify(data) }),
+      clientFetch<Task>("/tasks/", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
     update: (id: string, data: Record<string, unknown>) =>
-      clientFetch<Task>(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+      clientFetch<Task>(`/tasks/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
     complete: (id: string) =>
       clientFetch<Task>(`/tasks/${id}/complete`, { method: "POST" }),
     delete: (id: string) =>
@@ -152,18 +195,33 @@ export const api = {
   // Finance
   finance: {
     invoices: {
-      list: (params?: { status?: string; from_date?: string; to_date?: string }) =>
-        clientFetch<Invoice[]>("/finance/invoices", { params }),
+      list: (params?: {
+        status?: string;
+        from_date?: string;
+        to_date?: string;
+      }) => clientFetch<Invoice[]>("/finance/invoices", { params }),
       create: (data: Record<string, unknown>) =>
-        clientFetch<Invoice>("/finance/invoices", { method: "POST", body: JSON.stringify(data) }),
+        clientFetch<Invoice>("/finance/invoices", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
       updateStatus: (id: string, status: string) =>
-        clientFetch<Invoice>(`/finance/invoices/${id}/status?status=${status}`, { method: "PATCH" }),
+        clientFetch<Invoice>(
+          `/finance/invoices/${id}/status?status=${status}`,
+          { method: "PATCH" },
+        ),
     },
     entries: {
-      list: (params?: { type?: string; from_date?: string; to_date?: string }) =>
-        clientFetch<AccountEntry[]>("/finance/entries", { params }),
+      list: (params?: {
+        type?: string;
+        from_date?: string;
+        to_date?: string;
+      }) => clientFetch<AccountEntry[]>("/finance/entries", { params }),
       create: (data: Record<string, unknown>) =>
-        clientFetch<AccountEntry>("/finance/entries", { method: "POST", body: JSON.stringify(data) }),
+        clientFetch<AccountEntry>("/finance/entries", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
     },
     summary: (params?: { from_date?: string; to_date?: string }) =>
       clientFetch<FinanceSummary>("/finance/summary", { params }),
@@ -176,7 +234,10 @@ export const api = {
         clientFetch<Product[]>("/inventory/products", { params }),
       get: (id: string) => clientFetch<Product>(`/inventory/products/${id}`),
       create: (data: Record<string, unknown>) =>
-        clientFetch<Product>("/inventory/products", { method: "POST", body: JSON.stringify(data) }),
+        clientFetch<Product>("/inventory/products", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
       adjustStock: (id: string, quantity: number, reason: string) =>
         clientFetch<Product>(`/inventory/products/${id}/adjust-stock`, {
           method: "POST",
@@ -207,11 +268,15 @@ export const api = {
       updateStatus: (id: string, status: string, produced_quantity?: number) =>
         clientFetch<ProductionBatch>(
           `/inventory/batches/${id}/status?status=${status}${produced_quantity !== undefined ? `&produced_quantity=${produced_quantity}` : ""}`,
-          { method: "PATCH" }
+          { method: "PATCH" },
         ),
     },
     platformOrders: {
-      list: (params?: { platform?: string; from_date?: string; to_date?: string }) =>
+      list: (params?: {
+        platform?: string;
+        from_date?: string;
+        to_date?: string;
+      }) =>
         clientFetch<PlatformOrder[]>("/inventory/platform-orders", { params }),
       create: (data: Record<string, unknown>) =>
         clientFetch<PlatformOrder>("/inventory/platform-orders", {
@@ -230,10 +295,58 @@ export const api = {
     kpis: () => clientFetch<DashboardKPIs>("/dashboard/kpis"),
     monthlyTrend: () => clientFetch<MonthlyTrend[]>("/dashboard/monthly-trend"),
   },
+
+  // Profile
+  profile: {
+    update: (data: { name?: string; email?: string; designation?: string; avatar_url?: string }) =>
+      clientFetch<AuthUser>("/auth/me", {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+  },
+
+  // Roles & Permissions
+  roles: {
+    list: () => clientFetch<RoleDetail[]>("/roles/"),
+    create: (data: { name: string; description?: string; color?: string; permissions?: Partial<Record<Module, ModuleAccess>> }) =>
+      clientFetch<RoleDetail>("/roles/", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    update: (id: string, data: { name?: string; description?: string; color?: string; permissions?: Partial<Record<Module, ModuleAccess>> }) =>
+      clientFetch<RoleDetail>(`/roles/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    delete: (id: string) =>
+      clientFetch<{ message: string }>(`/roles/${id}`, { method: "DELETE" }),
+  },
 };
 
-// ── Error handler helper ──────────────────────────────────────────────────────
-export function handleApiError(error: unknown, fallback = "Something went wrong") {
+// ── Error handler helpers ─────────────────────────────────────────────────────
+
+export function handleApiError(
+  error: unknown,
+  fallback = "Something went wrong",
+) {
   const message = error instanceof Error ? error.message : fallback;
   toast.error(message);
+}
+
+/**
+ * Bind an API error to a react-hook-form field when the server returns a
+ * field-specific error (e.g. unique constraint on `name` or `phone`).
+ * Returns true if a field error was set, false if it fell back to a toast.
+ */
+export function bindApiError<T extends Record<string, unknown>>(
+  error: unknown,
+  setError: (field: keyof T, err: { message: string }) => void,
+  fallback = "Something went wrong",
+): boolean {
+  if (error instanceof ApiError && error.field) {
+    setError(error.field as keyof T, { message: error.message });
+    return true;
+  }
+  handleApiError(error, fallback);
+  return false;
 }

@@ -45,7 +45,7 @@ const config: Config = {
         },
         // Brand colors
         brand: {
-          rose: "#E8526A",
+          green: "#4d8731",
           gold: "#D4A853",
           cream: "#FDF6EE",
           charcoal: "#2C2C3A",

@@ -1,14 +1,14 @@
 from typing import Annotated
-from uuid import UUID
 
 from fastapi import Cookie, Depends, HTTPException, status
-from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.employee import Employee
+from jose import JWTError
 
 
 async def get_current_user(
@@ -32,7 +32,11 @@ async def get_current_user(
     except JWTError:
         raise credentials_exc
 
-    result = await db.execute(select(Employee).where(Employee.phone == phone, Employee.is_active == True))
+    result = await db.execute(
+        select(Employee)
+        .options(selectinload(Employee.role_obj))
+        .where(Employee.phone == phone, Employee.is_active == True)
+    )
     employee = result.scalar_one_or_none()
     if not employee:
         raise credentials_exc
@@ -42,17 +46,40 @@ async def get_current_user(
 CurrentUser = Annotated[Employee, Depends(get_current_user)]
 
 
+async def require_super_admin(current_user: CurrentUser) -> Employee:
+    role = current_user.role_obj
+    if not role or not role.is_system:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Super admin access required")
+    return current_user
+
+
 async def require_admin(current_user: CurrentUser) -> Employee:
-    if current_user.role != "admin":
+    role = current_user.role_obj
+    # Allow if system role (super admin) or role has full access (is_system check is enough)
+    if not role:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    # Check if the role has edit access on employees module (proxy for admin level)
+    if not role.is_system:
+        from app.api.v1.roles.model import MODULES
+        has_employees_edit = any(
+            p.module == "employees" and p.can_edit for p in role.permissions
+        )
+        if not has_employees_edit:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return current_user
 
 
 async def require_manager_or_admin(current_user: CurrentUser) -> Employee:
-    if current_user.role not in ("admin", "manager"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager or Admin access required")
+    role = current_user.role_obj
+    if not role:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    if not role.is_system:
+        has_employees_view = any(p.module == "employees" and p.can_view for p in role.permissions)
+        if not has_employees_view:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager or Admin access required")
     return current_user
 
 
+SuperAdminUser = Annotated[Employee, Depends(require_super_admin)]
 AdminUser = Annotated[Employee, Depends(require_admin)]
 ManagerUser = Annotated[Employee, Depends(require_manager_or_admin)]

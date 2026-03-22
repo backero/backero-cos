@@ -1,6 +1,6 @@
 import uuid
 from datetime import date, datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
@@ -8,6 +8,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.mixins import TimestampMixin, UUIDMixin
 from app.db.session import Base
+
+if TYPE_CHECKING:
+    from app.api.v1.roles.model import Role
 
 
 class Department(Base, UUIDMixin, TimestampMixin):
@@ -25,7 +28,10 @@ class Employee(Base, UUIDMixin, TimestampMixin):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     phone: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    role: Mapped[str] = mapped_column(String(20), default="employee", nullable=False)  # admin/manager/employee
+    role: Mapped[str] = mapped_column(String(50), default="Employee", nullable=False)  # mirrors role.name for JWT
+    role_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("roles.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     designation: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("departments.id"), nullable=True
@@ -37,6 +43,7 @@ class Employee(Base, UUIDMixin, TimestampMixin):
 
     department: Mapped[Optional[Department]] = relationship("Department", back_populates="employees")
     attendances: Mapped[list["Attendance"]] = relationship("Attendance", back_populates="employee")
+    role_obj: Mapped[Optional["Role"]] = relationship("Role", foreign_keys=[role_id], lazy="selectin")
 
 
 class Attendance(Base, UUIDMixin, TimestampMixin):

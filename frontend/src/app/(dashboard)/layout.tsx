@@ -1,25 +1,48 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppHeader } from "@/components/layout/app-header";
 import { useAuthStore } from "@/stores/auth-store";
 import { useUIStore } from "@/stores/ui-store";
 import { cn } from "@/lib/utils";
+import type { Module } from "@/types";
+
+const ROUTE_MODULE: Record<string, Module> = {
+  "/dashboard":  "dashboard",
+  "/tasks":      "tasks",
+  "/finance":    "finance",
+  "/inventory":  "inventory",
+  "/employees":  "employees",
+  "/production": "production",
+  "/reports":    "reports",
+  "/roles":      "roles",
+};
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
+  const pathname = usePathname();
+  const { isAuthenticated, canView } = useAuthStore();
   const { sidebarOpen, setSidebarOpen } = useUIStore();
+
+  // Derive which module the current path requires
+  const requiredModule = Object.entries(ROUTE_MODULE).find(([route]) =>
+    pathname === route || pathname.startsWith(route + "/")
+  )?.[1];
 
   useEffect(() => {
     if (!isAuthenticated) {
       router.push("/login");
+      return;
     }
-  }, [isAuthenticated, router]);
+    if (requiredModule && !canView(requiredModule)) {
+      router.replace("/dashboard");
+    }
+  }, [isAuthenticated, requiredModule, canView, router]);
 
   if (!isAuthenticated) return null;
+  if (requiredModule && !canView(requiredModule)) return null;
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">

@@ -15,6 +15,8 @@ const PAGE_TITLES: Record<string, string> = {
   "/employees": "Employees",
   "/production": "Production",
   "/reports": "Reports",
+  "/roles": "Roles & Access",
+  "/profile": "My Profile",
 };
 
 export function AppHeader() {

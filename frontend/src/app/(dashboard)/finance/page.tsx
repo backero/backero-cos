@@ -9,9 +9,7 @@ import { format } from "date-fns";
 import {
   ArrowDownRight,
   ArrowUpRight,
-  Check,
   Loader2,
-  Minus,
   Plus,
   Receipt,
   TrendingDown,
@@ -19,9 +17,17 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetBody,
+  SheetFooter,
+} from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -124,7 +130,6 @@ export default function FinancePage() {
   const watchedItems = invoiceForm.watch("items");
   const isGst = invoiceForm.watch("is_gst");
 
-  // Calculate invoice totals live
   const subtotal = watchedItems.reduce((sum, item) => {
     return sum + (item.quantity || 0) * (item.unit_price || 0);
   }, 0);
@@ -182,7 +187,7 @@ export default function FinancePage() {
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16 }}>
               <Card>
                 <CardContent className="p-5 flex items-center gap-4">
-                  <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", (summary?.net ?? 0) >= 0 ? "bg-brand-rose" : "bg-orange-500")}>
+                  <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", (summary?.net ?? 0) >= 0 ? "bg-brand-green" : "bg-orange-500")}>
                     <Receipt className="w-5 h-5 text-white" />
                   </div>
                   <div>
@@ -272,297 +277,300 @@ export default function FinancePage() {
         </TabsContent>
       </Tabs>
 
-      {/* ── Create Entry Dialog ── */}
-      <Dialog open={modals["createEntry"]} onOpenChange={(o) => !o && closeModal("createEntry")}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Account Entry</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={entryForm.handleSubmit(onEntrySubmit)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Date</Label>
-                <Input type="date" {...entryForm.register("date")} />
+      {/* ── Add Entry Sheet ── */}
+      <Sheet open={modals["createEntry"]} onOpenChange={(o) => !o && closeModal("createEntry")}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Add Account Entry</SheetTitle>
+            <SheetDescription>Record an income or expense transaction.</SheetDescription>
+          </SheetHeader>
+          <form onSubmit={entryForm.handleSubmit(onEntrySubmit)} className="flex flex-col flex-1 overflow-hidden">
+            <SheetBody className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Date</Label>
+                  <Input type="date" {...entryForm.register("date")} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Type</Label>
+                  <Select defaultValue="income" onValueChange={(v) => entryForm.setValue("type", v as "income" | "expense")}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="income">Income</SelectItem>
+                      <SelectItem value="expense">Expense</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Category</Label>
+                  <Input {...entryForm.register("category")} placeholder="e.g. Sales, Rent" />
+                  {entryForm.formState.errors.category && (
+                    <p className="text-xs text-destructive">{entryForm.formState.errors.category.message}</p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Amount (₹)</Label>
+                  <Input type="number" step="0.01" {...entryForm.register("amount", { valueAsNumber: true })} />
+                  {entryForm.formState.errors.amount && (
+                    <p className="text-xs text-destructive">{entryForm.formState.errors.amount.message}</p>
+                  )}
+                </div>
               </div>
               <div className="space-y-1.5">
-                <Label>Type</Label>
-                <Select defaultValue="income" onValueChange={(v) => entryForm.setValue("type", v as "income" | "expense")}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="income">Income</SelectItem>
-                    <SelectItem value="expense">Expense</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Category</Label>
-                <Input {...entryForm.register("category")} placeholder="e.g. Sales, Rent" />
-                {entryForm.formState.errors.category && (
-                  <p className="text-xs text-destructive">{entryForm.formState.errors.category.message}</p>
+                <Label>Description</Label>
+                <Input {...entryForm.register("description")} placeholder="Brief description..." />
+                {entryForm.formState.errors.description && (
+                  <p className="text-xs text-destructive">{entryForm.formState.errors.description.message}</p>
                 )}
               </div>
-              <div className="space-y-1.5">
-                <Label>Amount (₹)</Label>
-                <Input type="number" step="0.01" {...entryForm.register("amount", { valueAsNumber: true })} />
-                {entryForm.formState.errors.amount && (
-                  <p className="text-xs text-destructive">{entryForm.formState.errors.amount.message}</p>
-                )}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Payment Mode</Label>
+                  <Select defaultValue="cash" onValueChange={(v) => entryForm.setValue("payment_mode", v as EntryForm["payment_mode"])}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="bank">Bank Transfer</SelectItem>
+                      <SelectItem value="upi">UPI</SelectItem>
+                      <SelectItem value="cheque">Cheque</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Reference</Label>
+                  <Input {...entryForm.register("reference")} placeholder="UTR / Cheque no." />
+                </div>
               </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Description</Label>
-              <Input {...entryForm.register("description")} placeholder="Brief description..." />
-              {entryForm.formState.errors.description && (
-                <p className="text-xs text-destructive">{entryForm.formState.errors.description.message}</p>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Payment Mode</Label>
-                <Select defaultValue="cash" onValueChange={(v) => entryForm.setValue("payment_mode", v as EntryForm["payment_mode"])}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="bank">Bank Transfer</SelectItem>
-                    <SelectItem value="upi">UPI</SelectItem>
-                    <SelectItem value="cheque">Cheque</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Reference</Label>
-                <Input {...entryForm.register("reference")} placeholder="UTR / Cheque no." />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
+            </SheetBody>
+            <SheetFooter>
               <Button type="button" variant="outline" onClick={() => closeModal("createEntry")}>Cancel</Button>
               <Button type="submit" disabled={createEntry.isPending}>
                 {createEntry.isPending && <Loader2 className="w-3 h-3 animate-spin mr-2" />}
                 Add Entry
               </Button>
-            </div>
+            </SheetFooter>
           </form>
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
 
-      {/* ── Create Invoice Dialog ── */}
-      <Dialog open={modals["createInvoice"]} onOpenChange={(o) => !o && closeModal("createInvoice")}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Create Invoice</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={invoiceForm.handleSubmit(onInvoiceSubmit)} className="space-y-5">
+      {/* ── Create Invoice Sheet ── */}
+      <Sheet open={modals["createInvoice"]} onOpenChange={(o) => !o && closeModal("createInvoice")}>
+        <SheetContent className="max-w-[620px]">
+          <SheetHeader>
+            <SheetTitle>Create Invoice</SheetTitle>
+            <SheetDescription>Generate a GST or non-GST invoice for your customer.</SheetDescription>
+          </SheetHeader>
+          <form onSubmit={invoiceForm.handleSubmit(onInvoiceSubmit)} className="flex flex-col flex-1 overflow-hidden">
+            <SheetBody className="space-y-5">
 
-            {/* Invoice meta */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1.5">
-                <Label>Invoice Number *</Label>
-                <Input {...invoiceForm.register("invoice_number")} placeholder="INV-2025-001" />
-                {invoiceForm.formState.errors.invoice_number && (
-                  <p className="text-xs text-destructive">{invoiceForm.formState.errors.invoice_number.message}</p>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                <Label>Invoice Date *</Label>
-                <Input type="date" {...invoiceForm.register("invoice_date")} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Due Date</Label>
-                <Input type="date" {...invoiceForm.register("due_date")} />
-              </div>
-            </div>
-
-            {/* Customer info */}
-            <div className="border rounded-xl p-4 space-y-3">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Customer Details</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5 col-span-2">
-                  <Label>Customer Name *</Label>
-                  <Input {...invoiceForm.register("customer_name")} placeholder="e.g. ABC Distributors Pvt. Ltd." />
-                  {invoiceForm.formState.errors.customer_name && (
-                    <p className="text-xs text-destructive">{invoiceForm.formState.errors.customer_name.message}</p>
+              {/* Invoice meta */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Invoice Number *</Label>
+                  <Input {...invoiceForm.register("invoice_number")} placeholder="INV-2025-001" />
+                  {invoiceForm.formState.errors.invoice_number && (
+                    <p className="text-xs text-destructive">{invoiceForm.formState.errors.invoice_number.message}</p>
                   )}
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Phone</Label>
-                  <Input {...invoiceForm.register("customer_phone")} placeholder="10-digit mobile" maxLength={10} />
+                  <Label>Invoice Date *</Label>
+                  <Input type="date" {...invoiceForm.register("invoice_date")} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Email</Label>
-                  <Input type="email" {...invoiceForm.register("customer_email")} placeholder="Optional" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>GSTIN</Label>
-                  <Input {...invoiceForm.register("customer_gstin")} placeholder="15-char GSTIN" maxLength={15} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Address</Label>
-                  <Input {...invoiceForm.register("customer_address")} placeholder="Optional" />
+                  <Label>Due Date</Label>
+                  <Input type="date" {...invoiceForm.register("due_date")} />
                 </div>
               </div>
-            </div>
 
-            {/* GST toggle */}
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => invoiceForm.setValue("is_gst", !isGst)}
-                className={cn(
-                  "w-10 h-6 rounded-full transition-colors relative",
-                  isGst ? "bg-primary" : "bg-muted-foreground/30"
-                )}
-              >
-                <span className={cn(
-                  "absolute top-1 w-4 h-4 rounded-full bg-white transition-transform",
-                  isGst ? "translate-x-5" : "translate-x-1"
-                )} />
-              </button>
-              <Label className="cursor-pointer" onClick={() => invoiceForm.setValue("is_gst", !isGst)}>
-                GST Invoice (CGST + SGST applicable)
-              </Label>
-            </div>
+              {/* Customer info */}
+              <div className="border rounded-xl p-4 space-y-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Customer Details</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5 col-span-2">
+                    <Label>Customer Name *</Label>
+                    <Input {...invoiceForm.register("customer_name")} placeholder="e.g. ABC Distributors Pvt. Ltd." />
+                    {invoiceForm.formState.errors.customer_name && (
+                      <p className="text-xs text-destructive">{invoiceForm.formState.errors.customer_name.message}</p>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Phone</Label>
+                    <Input {...invoiceForm.register("customer_phone")} placeholder="10-digit mobile" maxLength={10} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Email</Label>
+                    <Input type="email" {...invoiceForm.register("customer_email")} placeholder="Optional" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>GSTIN</Label>
+                    <Input {...invoiceForm.register("customer_gstin")} placeholder="15-char GSTIN" maxLength={15} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Address</Label>
+                    <Input {...invoiceForm.register("customer_address")} placeholder="Optional" />
+                  </div>
+                </div>
+              </div>
 
-            {/* Line Items */}
-            <div className="border rounded-xl overflow-hidden">
-              <div className="bg-muted/50 px-4 py-2.5 flex items-center justify-between">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  Line Items
-                </p>
-                <Button
+              {/* GST toggle */}
+              <div className="flex items-center gap-3">
+                <button
                   type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs"
-                  onClick={() => append({ description: "", quantity: 1, unit_price: 0, gst_rate: 18 })}
+                  onClick={() => invoiceForm.setValue("is_gst", !isGst)}
+                  className={cn(
+                    "w-10 h-6 rounded-full transition-colors relative",
+                    isGst ? "bg-primary" : "bg-muted-foreground/30"
+                  )}
                 >
-                  <Plus className="w-3 h-3 mr-1" /> Add Item
-                </Button>
+                  <span className={cn(
+                    "absolute top-1 w-4 h-4 rounded-full bg-white transition-transform",
+                    isGst ? "translate-x-5" : "translate-x-1"
+                  )} />
+                </button>
+                <Label className="cursor-pointer" onClick={() => invoiceForm.setValue("is_gst", !isGst)}>
+                  GST Invoice (CGST + SGST applicable)
+                </Label>
               </div>
 
-              <div className="divide-y divide-border">
-                {fields.map((field, index) => {
-                  const qty = watchedItems[index]?.quantity || 0;
-                  const price = watchedItems[index]?.unit_price || 0;
-                  const rate = watchedItems[index]?.gst_rate || 0;
-                  const lineAmt = qty * price;
-                  const lineGst = isGst ? lineAmt * rate / 100 : 0;
-
-                  return (
-                    <div key={field.id} className="p-3 space-y-2">
-                      <div className="flex gap-2">
-                        <div className="flex-1">
-                          <Input
-                            {...invoiceForm.register(`items.${index}.description`)}
-                            placeholder="Item description..."
-                            className="h-8 text-sm"
-                          />
-                        </div>
-                        {fields.length > 1 && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
-                            onClick={() => remove(index)}
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-4 gap-2 items-end">
-                        <div className="space-y-1">
-                          <p className="text-[10px] text-muted-foreground">Qty</p>
-                          <Input
-                            type="number"
-                            step="0.001"
-                            className="h-8 text-sm"
-                            {...invoiceForm.register(`items.${index}.quantity`, { valueAsNumber: true })}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-[10px] text-muted-foreground">Unit Price (₹)</p>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            className="h-8 text-sm"
-                            {...invoiceForm.register(`items.${index}.unit_price`, { valueAsNumber: true })}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-[10px] text-muted-foreground">GST %</p>
-                          <Select
-                            value={String(watchedItems[index]?.gst_rate ?? 18)}
-                            onValueChange={(v) => invoiceForm.setValue(`items.${index}.gst_rate`, Number(v))}
-                          >
-                            <SelectTrigger className="h-8 text-sm">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {[0, 5, 12, 18, 28].map((g) => (
-                                <SelectItem key={g} value={String(g)}>{g}%</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1 text-right">
-                          <p className="text-[10px] text-muted-foreground">Amount</p>
-                          <p className="text-sm font-semibold h-8 flex items-center justify-end">
-                            {formatCurrency(lineAmt + lineGst)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Totals */}
-              <div className="border-t bg-muted/30 px-4 py-3 space-y-1.5 text-sm">
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Subtotal</span>
-                  <span>{formatCurrency(subtotal)}</span>
+              {/* Line Items */}
+              <div className="border rounded-xl overflow-hidden">
+                <div className="bg-muted/50 px-4 py-2.5 flex items-center justify-between">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Line Items</p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={() => append({ description: "", quantity: 1, unit_price: 0, gst_rate: 18 })}
+                  >
+                    <Plus className="w-3 h-3 mr-1" /> Add Item
+                  </Button>
                 </div>
-                {isGst && (
-                  <>
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>CGST</span>
-                      <span>{formatCurrency(gstAmount / 2)}</span>
-                    </div>
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>SGST</span>
-                      <span>{formatCurrency(gstAmount / 2)}</span>
-                    </div>
-                  </>
-                )}
-                <div className="flex justify-between font-bold text-foreground pt-1 border-t border-border">
-                  <span>Total</span>
-                  <span>{formatCurrency(total)}</span>
+
+                <div className="divide-y divide-border">
+                  {fields.map((field, index) => {
+                    const qty = watchedItems[index]?.quantity || 0;
+                    const price = watchedItems[index]?.unit_price || 0;
+                    const rate = watchedItems[index]?.gst_rate || 0;
+                    const lineAmt = qty * price;
+                    const lineGst = isGst ? lineAmt * rate / 100 : 0;
+
+                    return (
+                      <div key={field.id} className="p-3 space-y-2">
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <Input
+                              {...invoiceForm.register(`items.${index}.description`)}
+                              placeholder="Item description..."
+                              className="h-8 text-sm"
+                            />
+                          </div>
+                          {fields.length > 1 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                              onClick={() => remove(index)}
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-4 gap-2 items-end">
+                          <div className="space-y-1">
+                            <p className="text-[10px] text-muted-foreground">Qty</p>
+                            <Input
+                              type="number"
+                              step="0.001"
+                              className="h-8 text-sm"
+                              {...invoiceForm.register(`items.${index}.quantity`, { valueAsNumber: true })}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[10px] text-muted-foreground">Unit Price (₹)</p>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              className="h-8 text-sm"
+                              {...invoiceForm.register(`items.${index}.unit_price`, { valueAsNumber: true })}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[10px] text-muted-foreground">GST %</p>
+                            <Select
+                              value={String(watchedItems[index]?.gst_rate ?? 18)}
+                              onValueChange={(v) => invoiceForm.setValue(`items.${index}.gst_rate`, Number(v))}
+                            >
+                              <SelectTrigger className="h-8 text-sm">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {[0, 5, 12, 18, 28].map((g) => (
+                                  <SelectItem key={g} value={String(g)}>{g}%</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1 text-right">
+                            <p className="text-[10px] text-muted-foreground">Amount</p>
+                            <p className="text-sm font-semibold h-8 flex items-center justify-end">
+                              {formatCurrency(lineAmt + lineGst)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Totals */}
+                <div className="border-t bg-muted/30 px-4 py-3 space-y-1.5 text-sm">
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Subtotal</span>
+                    <span>{formatCurrency(subtotal)}</span>
+                  </div>
+                  {isGst && (
+                    <>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>CGST</span>
+                        <span>{formatCurrency(gstAmount / 2)}</span>
+                      </div>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>SGST</span>
+                        <span>{formatCurrency(gstAmount / 2)}</span>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex justify-between font-bold text-foreground pt-1 border-t border-border">
+                    <span>Total</span>
+                    <span>{formatCurrency(total)}</span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {invoiceForm.formState.errors.items && (
-              <p className="text-xs text-destructive">{invoiceForm.formState.errors.items.message}</p>
-            )}
+              {invoiceForm.formState.errors.items && (
+                <p className="text-xs text-destructive">{invoiceForm.formState.errors.items.message}</p>
+              )}
 
-            {/* Notes */}
-            <div className="space-y-1.5">
-              <Label>Notes</Label>
-              <Textarea {...invoiceForm.register("notes")} rows={2} placeholder="Optional notes or payment terms..." />
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
+              {/* Notes */}
+              <div className="space-y-1.5">
+                <Label>Notes</Label>
+                <Textarea {...invoiceForm.register("notes")} rows={2} placeholder="Optional notes or payment terms..." />
+              </div>
+            </SheetBody>
+            <SheetFooter>
               <Button type="button" variant="outline" onClick={() => closeModal("createInvoice")}>Cancel</Button>
               <Button type="submit" disabled={createInvoice.isPending}>
                 {createInvoice.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}
                 Create Invoice
               </Button>
-            </div>
+            </SheetFooter>
           </form>
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

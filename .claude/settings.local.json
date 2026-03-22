@@ -7,7 +7,23 @@
       "Bash(find /d/Development/Internal/backero-cos/frontend/src -type f \\\\\\(-name *.ts -o -name *.tsx -o -name *.js -o -name *.jsx \\\\\\))",
       "Bash(find /d/Development/Internal/backero-cos/frontend -maxdepth 1 -type f \\\\\\(-name *.json -o -name *.ts -o -name *.config.* \\\\\\))",
       "Bash(find /d/Development/Internal/backero-cos/frontend/src -name *.css)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(find \"D:\\\\Development\\\\Internal\\\\backero-cos\\\\frontend\\\\src\\\\app\\\\\\(dashboard\\)\" -type f -name \"*.tsx\" -o -name \"*.ts\")",
+      "Bash(.ts$ \")",
+      "Bash(grep -r \"Dialog\\\\|Sheet\\\\|Modal\" /d/Development/Internal/backero-cos/frontend/src/app --include=*.tsx --include=*.ts)",
+      "Bash(for f:*)",
+      "Bash(do echo:*)",
+      "Read(//d/Development/Internal/backero-cos/**)",
+      "Bash(done)",
+      "Bash(find \"/d/Development/Internal/backero-cos/frontend/src/app/\\(dashboard\\)\" -maxdepth 1 -type d)",
+      "Bash(for page:*)",
+      "Bash(do)",
+      "Bash(echo \"=== $page/page.tsx ===\")",
+      "Read(//d/Development/Internal/backero-cos/frontend/src/app/\\(dashboard\\)/$page/**)",
+      "Bash(npm install:*)",
+      "Bash(node -e \"console.log\\(require\\(''vaul/package.json''\\).version\\)\")",
+      "Bash(npx next:*)",
+      "Bash(cd:*)"
     ]
   }
 }

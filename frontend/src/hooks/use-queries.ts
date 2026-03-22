@@ -7,6 +7,7 @@ import { api, handleApiError } from "@/lib/api-client";
 // ── Query Keys ────────────────────────────────────────────────────────────────
 export const QK = {
   me: ["me"],
+  roles: ["roles"],
   employees: (params?: object) => ["employees", params],
   employee: (id: string) => ["employees", id],
   departments: ["departments"],
@@ -24,6 +25,15 @@ export const QK = {
   kpis: ["kpis"],
   monthlyTrend: ["monthly-trend"],
 } as const;
+
+// ── Roles ────────────────────────────────────────────────────────────────────
+export function useRoles() {
+  return useQuery({
+    queryKey: QK.roles,
+    queryFn: () => api.roles.list(),
+    staleTime: 5 * 60 * 1000,
+  });
+}
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 export function useMe() {
@@ -75,7 +85,6 @@ export function useCreateEmployee() {
       qc.invalidateQueries({ queryKey: ["employees"] });
       toast.success("Employee created successfully");
     },
-    onError: (e) => handleApiError(e),
   });
 }
 
@@ -127,7 +136,6 @@ export function useCreateDepartment() {
       qc.invalidateQueries({ queryKey: QK.departments });
       toast.success("Department created");
     },
-    onError: (e) => handleApiError(e),
   });
 }
 

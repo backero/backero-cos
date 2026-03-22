@@ -18,13 +18,16 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetBody,
+  SheetFooter,
+} from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -99,19 +102,16 @@ export default function InventoryPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const todayStr = format(new Date(), "yyyy-MM-dd");
 
-  // Queries
   const { data: products, isLoading: productsLoading } = useProducts({
     category: categoryFilter || undefined,
   });
   const { data: platformSummary, isLoading: platformLoading } =
     usePlatformSummary(todayStr);
 
-  // Mutations
   const createProduct = useCreateProduct();
   const adjustStock = useAdjustStock();
   const createPlatformOrder = useCreatePlatformOrder();
 
-  // Forms
   const productForm = useForm<ProductForm>({
     resolver: zodResolver(productSchema),
     defaultValues: {
@@ -142,13 +142,11 @@ export default function InventoryPage() {
     },
   });
 
-  // Derived data
   const lowStockProducts = products?.filter((p) => p.is_low_stock) ?? [];
   const categories = Array.from(
     new Set(products?.map((p) => p.category).filter(Boolean)),
   ) as string[];
 
-  // Handlers
   async function onCreateProduct(data: ProductForm) {
     await createProduct.mutateAsync(data as Record<string, unknown>);
     productForm.reset();
@@ -187,8 +185,6 @@ export default function InventoryPage() {
     closeModal("logOrder");
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
-
   return (
     <div className="space-y-6 w-full flex-1">
       {/* ── Low Stock Alert Banner ── */}
@@ -204,8 +200,7 @@ export default function InventoryPage() {
               <AlertTriangle className="w-5 h-5 text-orange-500 shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-orange-800 dark:text-orange-300">
-                  {lowStockProducts.length} product
-                  {lowStockProducts.length > 1 ? "s" : ""} running low on stock
+                  {lowStockProducts.length} product{lowStockProducts.length > 1 ? "s" : ""} running low on stock
                 </p>
                 <p className="text-xs text-orange-600 dark:text-orange-400 mt-0.5 truncate">
                   {lowStockProducts.map((p) => p.name).join(", ")}
@@ -252,28 +247,13 @@ export default function InventoryPage() {
                 <Card className="overflow-hidden">
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-3">
-                      <div
-                        className={cn(
-                          "w-2.5 h-2.5 rounded-full",
-                          getPlatformColor(ps.platform),
-                        )}
-                      />
-                      <span className="text-xs font-semibold capitalize text-foreground">
-                        {ps.platform}
-                      </span>
+                      <div className={cn("w-2.5 h-2.5 rounded-full", getPlatformColor(ps.platform))} />
+                      <span className="text-xs font-semibold capitalize text-foreground">{ps.platform}</span>
                     </div>
-                    <p className="text-xl font-bold text-foreground leading-none">
-                      {ps.orders}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground mt-1">
-                      orders today
-                    </p>
-                    <p className="text-sm font-medium text-primary mt-2">
-                      {formatCurrency(ps.revenue)}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {ps.units} units sold
-                    </p>
+                    <p className="text-xl font-bold text-foreground leading-none">{ps.orders}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">orders today</p>
+                    <p className="text-sm font-medium text-primary mt-2">{formatCurrency(ps.revenue)}</p>
+                    <p className="text-[10px] text-muted-foreground">{ps.units} units sold</p>
                   </CardContent>
                   <div className={cn("h-1", getPlatformColor(ps.platform))} />
                 </Card>
@@ -297,13 +277,10 @@ export default function InventoryPage() {
             <h3 className="font-semibold text-base">Products & Stock</h3>
             <p className="text-muted-foreground text-sm">
               {products?.length ?? 0} products ·{" "}
-              <span className="text-orange-500">
-                {lowStockProducts.length} low stock
-              </span>
+              <span className="text-orange-500">{lowStockProducts.length} low stock</span>
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {/* Category filter */}
             <Select
               value={categoryFilter || "all"}
               onValueChange={(v) => setCategoryFilter(v === "all" ? "" : v)}
@@ -314,9 +291,7 @@ export default function InventoryPage() {
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
                 {categories.map((cat) => (
-                  <SelectItem key={cat} value={cat}>
-                    {cat}
-                  </SelectItem>
+                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -337,12 +312,7 @@ export default function InventoryPage() {
             <CardContent className="py-16 text-center">
               <Package className="w-12 h-12 mx-auto mb-3 text-muted-foreground/30" />
               <p className="text-muted-foreground">No products found</p>
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-3"
-                onClick={() => openModal("createProduct")}
-              >
+              <Button size="sm" variant="outline" className="mt-3" onClick={() => openModal("createProduct")}>
                 Add your first product
               </Button>
             </CardContent>
@@ -361,356 +331,216 @@ export default function InventoryPage() {
         )}
       </div>
 
-      {/* ── Create Product Dialog ── */}
-      <Dialog
-        open={modals["createProduct"]}
-        onOpenChange={(o) => !o && closeModal("createProduct")}
-      >
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Add New Product</DialogTitle>
-          </DialogHeader>
-          <form
-            onSubmit={productForm.handleSubmit(onCreateProduct)}
-            className="space-y-4"
-          >
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5 col-span-2">
-                <Label>Product Name *</Label>
-                <Input
-                  {...productForm.register("name")}
-                  placeholder="e.g. Rose Face Cream 50g"
-                />
-                {productForm.formState.errors.name && (
-                  <p className="text-xs text-destructive">
-                    {productForm.formState.errors.name.message}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                <Label>SKU *</Label>
-                <Input
-                  {...productForm.register("sku")}
-                  placeholder="e.g. RFC-50G"
-                />
-                {productForm.formState.errors.sku && (
-                  <p className="text-xs text-destructive">
-                    {productForm.formState.errors.sku.message}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                <Label>Category</Label>
-                <Input
-                  {...productForm.register("category")}
-                  placeholder="e.g. Face Care"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Unit</Label>
-                <Select
-                  defaultValue="pcs"
-                  onValueChange={(v) => productForm.setValue("unit", v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {["pcs", "ml", "g", "kg", "L", "box", "set"].map((u) => (
-                      <SelectItem key={u} value={u}>
-                        {u}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>HSN Code</Label>
-                <Input
-                  {...productForm.register("hsn_code")}
-                  placeholder="e.g. 33049990"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1.5">
-                <Label>MRP (₹)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  {...productForm.register("mrp", { valueAsNumber: true })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Cost Price (₹)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  {...productForm.register("cost_price", {
-                    valueAsNumber: true,
-                  })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>GST Rate (%)</Label>
-                <Select
-                  defaultValue="18"
-                  onValueChange={(v) =>
-                    productForm.setValue("gst_rate", Number(v))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[0, 5, 12, 18, 28].map((g) => (
-                      <SelectItem key={g} value={String(g)}>
-                        {g}%
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Reorder Level</Label>
-                <Input
-                  type="number"
-                  {...productForm.register("reorder_level", {
-                    valueAsNumber: true,
-                  })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Max Stock</Label>
-                <Input
-                  type="number"
-                  {...productForm.register("max_stock", {
-                    valueAsNumber: true,
-                  })}
-                />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Description</Label>
-              <Textarea
-                {...productForm.register("description")}
-                placeholder="Optional product description..."
-                rows={2}
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => closeModal("createProduct")}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={createProduct.isPending}>
-                {createProduct.isPending && (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />
-                )}
-                Create Product
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Log Platform Order Dialog ── */}
-      <Dialog
-        open={modals["logOrder"]}
-        onOpenChange={(o) => !o && closeModal("logOrder")}
-      >
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Log Platform Order</DialogTitle>
-          </DialogHeader>
-          <form
-            onSubmit={platformOrderForm.handleSubmit(onLogPlatformOrder)}
-            className="space-y-4"
-          >
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Platform *</Label>
-                <Select
-                  defaultValue="amazon"
-                  onValueChange={(v) =>
-                    platformOrderForm.setValue(
-                      "platform",
-                      v as PlatformOrderForm["platform"],
-                    )
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(["amazon", "flipkart", "meesho", "website", "offline"] as const).map((p) => (
-                      <SelectItem key={p} value={p} className="capitalize">
-                        {p}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Order ID *</Label>
-                <Input
-                  {...platformOrderForm.register("order_id")}
-                  placeholder="e.g. AMZ-12345"
-                />
-                {platformOrderForm.formState.errors.order_id && (
-                  <p className="text-xs text-destructive">
-                    {platformOrderForm.formState.errors.order_id.message}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Product Name *</Label>
-              <Input
-                {...platformOrderForm.register("product_name")}
-                placeholder="e.g. Rose Face Cream 50g"
-              />
-              {platformOrderForm.formState.errors.product_name && (
-                <p className="text-xs text-destructive">
-                  {platformOrderForm.formState.errors.product_name.message}
-                </p>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Quantity *</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  {...platformOrderForm.register("quantity", { valueAsNumber: true })}
-                />
-                {platformOrderForm.formState.errors.quantity && (
-                  <p className="text-xs text-destructive">
-                    {platformOrderForm.formState.errors.quantity.message}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                <Label>Amount (₹) *</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  {...platformOrderForm.register("amount", { valueAsNumber: true })}
-                />
-                {platformOrderForm.formState.errors.amount && (
-                  <p className="text-xs text-destructive">
-                    {platformOrderForm.formState.errors.amount.message}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Status</Label>
-                <Select
-                  defaultValue="pending"
-                  onValueChange={(v) =>
-                    platformOrderForm.setValue(
-                      "status",
-                      v as PlatformOrderForm["status"],
-                    )
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(["pending", "shipped", "delivered", "returned", "cancelled"] as const).map((s) => (
-                      <SelectItem key={s} value={s} className="capitalize">
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Order Date *</Label>
-                <Input
-                  type="date"
-                  {...platformOrderForm.register("order_date")}
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => closeModal("logOrder")}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={createPlatformOrder.isPending}>
-                {createPlatformOrder.isPending && (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />
-                )}
-                Log Order
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Adjust Stock Dialog ── */}
-      <Dialog
-        open={modals["adjustStock"]}
-        onOpenChange={(o) => !o && closeModal("adjustStock")}
-      >
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Adjust Stock</DialogTitle>
-          </DialogHeader>
-          {selectedProduct && (
-            <div className="space-y-4">
-              {/* Product info */}
-              <div className="p-3 bg-muted rounded-lg">
-                <p className="text-sm font-semibold">{selectedProduct.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {selectedProduct.sku}
-                </p>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="text-sm font-bold text-foreground">
-                    Current: {selectedProduct.current_stock}{" "}
-                    {selectedProduct.unit}
-                  </span>
-                  {selectedProduct.is_low_stock && (
-                    <Badge
-                      variant="destructive"
-                      className="text-[10px] px-1.5 py-0"
-                    >
-                      Low Stock
-                    </Badge>
+      {/* ── Add Product Sheet ── */}
+      <Sheet open={modals["createProduct"]} onOpenChange={(o) => !o && closeModal("createProduct")}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Add New Product</SheetTitle>
+            <SheetDescription>Enter the product details and pricing information.</SheetDescription>
+          </SheetHeader>
+          <form onSubmit={productForm.handleSubmit(onCreateProduct)} className="flex flex-col flex-1 overflow-hidden">
+            <SheetBody className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5 col-span-2">
+                  <Label>Product Name *</Label>
+                  <Input {...productForm.register("name")} placeholder="e.g. Rose Face Cream 50g" />
+                  {productForm.formState.errors.name && (
+                    <p className="text-xs text-destructive">{productForm.formState.errors.name.message}</p>
                   )}
                 </div>
-                <div className="mt-2">
-                  <Progress
-                    value={getStockPercent(
-                      selectedProduct.current_stock,
-                      selectedProduct.max_stock,
-                    )}
-                    className="h-1.5"
-                  />
+                <div className="space-y-1.5">
+                  <Label>SKU *</Label>
+                  <Input {...productForm.register("sku")} placeholder="e.g. RFC-50G" />
+                  {productForm.formState.errors.sku && (
+                    <p className="text-xs text-destructive">{productForm.formState.errors.sku.message}</p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Category</Label>
+                  <Input {...productForm.register("category")} placeholder="e.g. Face Care" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Unit</Label>
+                  <Select defaultValue="pcs" onValueChange={(v) => productForm.setValue("unit", v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {["pcs", "ml", "g", "kg", "L", "box", "set"].map((u) => (
+                        <SelectItem key={u} value={u}>{u}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>HSN Code</Label>
+                  <Input {...productForm.register("hsn_code")} placeholder="e.g. 33049990" />
                 </div>
               </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label>MRP (₹)</Label>
+                  <Input type="number" step="0.01" {...productForm.register("mrp", { valueAsNumber: true })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Cost Price (₹)</Label>
+                  <Input type="number" step="0.01" {...productForm.register("cost_price", { valueAsNumber: true })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>GST Rate (%)</Label>
+                  <Select defaultValue="18" onValueChange={(v) => productForm.setValue("gst_rate", Number(v))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {[0, 5, 12, 18, 28].map((g) => (
+                        <SelectItem key={g} value={String(g)}>{g}%</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Reorder Level</Label>
+                  <Input type="number" {...productForm.register("reorder_level", { valueAsNumber: true })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Max Stock</Label>
+                  <Input type="number" {...productForm.register("max_stock", { valueAsNumber: true })} />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Description</Label>
+                <Textarea {...productForm.register("description")} placeholder="Optional product description..." rows={2} />
+              </div>
+            </SheetBody>
+            <SheetFooter>
+              <Button type="button" variant="outline" onClick={() => closeModal("createProduct")}>Cancel</Button>
+              <Button type="submit" disabled={createProduct.isPending}>
+                {createProduct.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}
+                Create Product
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
 
-              <form
-                onSubmit={adjustForm.handleSubmit(onAdjustStock)}
-                className="space-y-4"
-              >
+      {/* ── Log Platform Order Sheet ── */}
+      <Sheet open={modals["logOrder"]} onOpenChange={(o) => !o && closeModal("logOrder")}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Log Platform Order</SheetTitle>
+            <SheetDescription>Record a sale from any e-commerce platform.</SheetDescription>
+          </SheetHeader>
+          <form onSubmit={platformOrderForm.handleSubmit(onLogPlatformOrder)} className="flex flex-col flex-1 overflow-hidden">
+            <SheetBody className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Platform *</Label>
+                  <Select
+                    defaultValue="amazon"
+                    onValueChange={(v) => platformOrderForm.setValue("platform", v as PlatformOrderForm["platform"])}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {(["amazon", "flipkart", "meesho", "website", "offline"] as const).map((p) => (
+                        <SelectItem key={p} value={p} className="capitalize">{p}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Order ID *</Label>
+                  <Input {...platformOrderForm.register("order_id")} placeholder="e.g. AMZ-12345" />
+                  {platformOrderForm.formState.errors.order_id && (
+                    <p className="text-xs text-destructive">{platformOrderForm.formState.errors.order_id.message}</p>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Product Name *</Label>
+                <Input {...platformOrderForm.register("product_name")} placeholder="e.g. Rose Face Cream 50g" />
+                {platformOrderForm.formState.errors.product_name && (
+                  <p className="text-xs text-destructive">{platformOrderForm.formState.errors.product_name.message}</p>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Quantity *</Label>
+                  <Input type="number" min="1" {...platformOrderForm.register("quantity", { valueAsNumber: true })} />
+                  {platformOrderForm.formState.errors.quantity && (
+                    <p className="text-xs text-destructive">{platformOrderForm.formState.errors.quantity.message}</p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Amount (₹) *</Label>
+                  <Input type="number" step="0.01" min="0" {...platformOrderForm.register("amount", { valueAsNumber: true })} />
+                  {platformOrderForm.formState.errors.amount && (
+                    <p className="text-xs text-destructive">{platformOrderForm.formState.errors.amount.message}</p>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Status</Label>
+                  <Select
+                    defaultValue="pending"
+                    onValueChange={(v) => platformOrderForm.setValue("status", v as PlatformOrderForm["status"])}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {(["pending", "shipped", "delivered", "returned", "cancelled"] as const).map((s) => (
+                        <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Order Date *</Label>
+                  <Input type="date" {...platformOrderForm.register("order_date")} />
+                </div>
+              </div>
+            </SheetBody>
+            <SheetFooter>
+              <Button type="button" variant="outline" onClick={() => closeModal("logOrder")}>Cancel</Button>
+              <Button type="submit" disabled={createPlatformOrder.isPending}>
+                {createPlatformOrder.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}
+                Log Order
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
+
+      {/* ── Adjust Stock Sheet ── */}
+      <Sheet open={modals["adjustStock"]} onOpenChange={(o) => !o && closeModal("adjustStock")}>
+        <SheetContent className="max-w-[400px]">
+          <SheetHeader>
+            <SheetTitle>Adjust Stock</SheetTitle>
+            <SheetDescription>
+              {selectedProduct ? `Update stock for ${selectedProduct.name}` : "Select a product to adjust"}
+            </SheetDescription>
+          </SheetHeader>
+          {selectedProduct && (
+            <form onSubmit={adjustForm.handleSubmit(onAdjustStock)} className="flex flex-col flex-1 overflow-hidden">
+              <SheetBody className="space-y-4">
+                {/* Product info */}
+                <div className="p-4 bg-muted/60 rounded-xl border border-border">
+                  <p className="text-sm font-semibold">{selectedProduct.name}</p>
+                  <p className="text-xs text-muted-foreground">{selectedProduct.sku}</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-sm font-bold text-foreground">
+                      Current: {selectedProduct.current_stock} {selectedProduct.unit}
+                    </span>
+                    {selectedProduct.is_low_stock && (
+                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Low Stock</Badge>
+                    )}
+                  </div>
+                  <div className="mt-2">
+                    <Progress
+                      value={getStockPercent(selectedProduct.current_stock, selectedProduct.max_stock)}
+                      className="h-1.5"
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-1.5">
                   <Label>Quantity Change</Label>
                   <div className="flex items-center gap-2">
@@ -719,21 +549,14 @@ export default function InventoryPage() {
                       variant="outline"
                       size="sm"
                       className="shrink-0"
-                      onClick={() =>
-                        adjustForm.setValue(
-                          "quantity",
-                          -Math.abs(adjustForm.getValues("quantity")),
-                        )
-                      }
+                      onClick={() => adjustForm.setValue("quantity", -Math.abs(adjustForm.getValues("quantity")))}
                     >
                       <ArrowDownCircle className="w-4 h-4 text-red-500" />
                     </Button>
                     <Input
                       type="number"
                       step="0.001"
-                      {...adjustForm.register("quantity", {
-                        valueAsNumber: true,
-                      })}
+                      {...adjustForm.register("quantity", { valueAsNumber: true })}
                       className="text-center font-mono"
                     />
                     <Button
@@ -741,12 +564,7 @@ export default function InventoryPage() {
                       variant="outline"
                       size="sm"
                       className="shrink-0"
-                      onClick={() =>
-                        adjustForm.setValue(
-                          "quantity",
-                          Math.abs(adjustForm.getValues("quantity")),
-                        )
-                      }
+                      onClick={() => adjustForm.setValue("quantity", Math.abs(adjustForm.getValues("quantity")))}
                     >
                       <ArrowUpCircle className="w-4 h-4 text-green-500" />
                     </Button>
@@ -755,46 +573,34 @@ export default function InventoryPage() {
                     Positive = add stock · Negative = remove stock
                   </p>
                   {adjustForm.formState.errors.quantity && (
-                    <p className="text-xs text-destructive">
-                      {adjustForm.formState.errors.quantity.message}
-                    </p>
+                    <p className="text-xs text-destructive">{adjustForm.formState.errors.quantity.message}</p>
                   )}
                 </div>
                 <div className="space-y-1.5">
                   <Label>Reason *</Label>
-                  <Input
-                    {...adjustForm.register("reason")}
-                    placeholder="e.g. Stock received from supplier"
-                  />
+                  <Input {...adjustForm.register("reason")} placeholder="e.g. Stock received from supplier" />
                   {adjustForm.formState.errors.reason && (
-                    <p className="text-xs text-destructive">
-                      {adjustForm.formState.errors.reason.message}
-                    </p>
+                    <p className="text-xs text-destructive">{adjustForm.formState.errors.reason.message}</p>
                   )}
                 </div>
-                <div className="flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setSelectedProduct(null);
-                      closeModal("adjustStock");
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={adjustStock.isPending}>
-                    {adjustStock.isPending && (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />
-                    )}
-                    Adjust Stock
-                  </Button>
-                </div>
-              </form>
-            </div>
+              </SheetBody>
+              <SheetFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => { setSelectedProduct(null); closeModal("adjustStock"); }}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={adjustStock.isPending}>
+                  {adjustStock.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}
+                  Adjust Stock
+                </Button>
+              </SheetFooter>
+            </form>
           )}
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -820,53 +626,29 @@ function ProductCard({
       transition={{ delay: index * 0.06, duration: 0.35 }}
       whileHover={{ y: -2 }}
     >
-      <Card
-        className={cn(
-          "overflow-hidden transition-shadow hover:shadow-md",
-          isLow && "border-orange-200 dark:border-orange-800",
-        )}
-      >
+      <Card className={cn("overflow-hidden transition-shadow hover:shadow-md", isLow && "border-orange-200 dark:border-orange-800")}>
         <CardContent className="p-4 space-y-3">
-          {/* Header */}
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="text-sm font-semibold leading-tight truncate">
-                {product.name}
-              </p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                {product.sku}
-              </p>
+              <p className="text-sm font-semibold leading-tight truncate">{product.name}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">{product.sku}</p>
             </div>
             <div className="flex flex-col items-end gap-1 shrink-0">
               {product.category && (
-                <Badge
-                  variant="secondary"
-                  className="text-[10px] px-1.5 py-0 capitalize"
-                >
-                  {product.category}
-                </Badge>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 capitalize">{product.category}</Badge>
               )}
               {isLow && (
-                <Badge
-                  variant="outline"
-                  className="text-[10px] px-1.5 py-0 text-orange-600 border-orange-300 dark:border-orange-700 dark:text-orange-400"
-                >
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-orange-600 border-orange-300 dark:border-orange-700 dark:text-orange-400">
                   Low Stock
                 </Badge>
               )}
             </div>
           </div>
 
-          {/* Stock Level */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">Stock Level</span>
-              <span
-                className={cn(
-                  "font-semibold",
-                  isLow ? "text-orange-500" : "text-foreground",
-                )}
-              >
+              <span className={cn("font-semibold", isLow ? "text-orange-500" : "text-foreground")}>
                 {product.current_stock} / {product.max_stock} {product.unit}
               </span>
             </div>
@@ -874,34 +656,23 @@ function ProductCard({
               value={stockPct}
               className={cn(
                 "h-2 rounded-full",
-                isLow
-                  ? "[&>div]:bg-orange-500"
-                  : stockPct > 60
-                    ? "[&>div]:bg-green-500"
-                    : "[&>div]:bg-yellow-500",
+                isLow ? "[&>div]:bg-orange-500" : stockPct > 60 ? "[&>div]:bg-green-500" : "[&>div]:bg-yellow-500",
               )}
             />
             <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-              <span>
-                Reorder at {product.reorder_level} {product.unit}
-              </span>
+              <span>Reorder at {product.reorder_level} {product.unit}</span>
               <span>{stockPct}%</span>
             </div>
           </div>
 
-          {/* Price Row */}
           <div className="flex items-center justify-between pt-1 border-t border-border">
             <div>
               <p className="text-[10px] text-muted-foreground">MRP</p>
-              <p className="text-sm font-bold text-foreground">
-                {formatCurrency(product.mrp)}
-              </p>
+              <p className="text-sm font-bold text-foreground">{formatCurrency(product.mrp)}</p>
             </div>
             <div className="text-right">
               <p className="text-[10px] text-muted-foreground">Cost</p>
-              <p className="text-sm font-medium text-muted-foreground">
-                {formatCurrency(product.cost_price)}
-              </p>
+              <p className="text-sm font-medium text-muted-foreground">{formatCurrency(product.cost_price)}</p>
             </div>
             <div className="text-right">
               <p className="text-[10px] text-muted-foreground">GST</p>
@@ -909,13 +680,7 @@ function ProductCard({
             </div>
           </div>
 
-          {/* Actions */}
-          <Button
-            size="sm"
-            variant="outline"
-            className="w-full h-8 text-xs"
-            onClick={onAdjust}
-          >
+          <Button size="sm" variant="outline" className="w-full h-8 text-xs" onClick={onAdjust}>
             <TrendingUp className="w-3.5 h-3.5 mr-1.5" />
             Adjust Stock
           </Button>

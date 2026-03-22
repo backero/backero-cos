@@ -12,18 +12,20 @@ import {
   FileCheck,
   Loader2,
   Plus,
-  RefreshCw,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetBody,
+  SheetFooter,
+} from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -247,60 +249,63 @@ export default function TasksPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Create Task Dialog */}
-      <Dialog
+      {/* ── Create Task Sheet ── */}
+      <Sheet
         open={modals["createTask"]}
         onOpenChange={(o) => !o && closeModal("createTask")}
       >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Create New Task</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Title *</Label>
-              <Input {...form.register("title")} placeholder="Task title..." />
-              {form.formState.errors.title && (
-                <p className="text-xs text-destructive">
-                  {form.formState.errors.title.message}
-                </p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label>Description</Label>
-              <Textarea
-                {...form.register("description")}
-                placeholder="Optional description..."
-                rows={3}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Create New Task</SheetTitle>
+            <SheetDescription>Add a task and assign priority or due date.</SheetDescription>
+          </SheetHeader>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden">
+            <SheetBody className="space-y-4">
               <div className="space-y-1.5">
-                <Label>Priority</Label>
-                <Select
-                  defaultValue="medium"
-                  onValueChange={(v) =>
-                    form.setValue("priority", v as TaskForm["priority"])
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PRIORITY_OPTIONS.map((p) => (
-                      <SelectItem key={p} value={p} className="capitalize">
-                        {p}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Title *</Label>
+                <Input {...form.register("title")} placeholder="Task title..." />
+                {form.formState.errors.title && (
+                  <p className="text-xs text-destructive">
+                    {form.formState.errors.title.message}
+                  </p>
+                )}
               </div>
               <div className="space-y-1.5">
-                <Label>Due Date</Label>
-                <Input type="datetime-local" {...form.register("due_date")} />
+                <Label>Description</Label>
+                <Textarea
+                  {...form.register("description")}
+                  placeholder="Optional description..."
+                  rows={3}
+                />
               </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Priority</Label>
+                  <Select
+                    defaultValue="medium"
+                    onValueChange={(v) =>
+                      form.setValue("priority", v as TaskForm["priority"])
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PRIORITY_OPTIONS.map((p) => (
+                        <SelectItem key={p} value={p} className="capitalize">
+                          {p}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Due Date</Label>
+                  <Input type="datetime-local" {...form.register("due_date")} />
+                </div>
+              </div>
+            </SheetBody>
+            <SheetFooter>
               <Button
                 type="button"
                 variant="outline"
@@ -314,10 +319,10 @@ export default function TasksPage() {
                 )}
                 Create Task
               </Button>
-            </div>
+            </SheetFooter>
           </form>
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

@@ -1,8 +1,16 @@
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Get the path to the root .env (parent of the 'app' folder)
+BASE_DIR = Path(__file__).resolve().parent.parent
+ENV_FILE = BASE_DIR.parent / ".env" if BASE_DIR.name == "app" else BASE_DIR / ".env"
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=(".env", str(ENV_FILE)), 
+        env_file_encoding="utf-8", 
+        extra="ignore"
+    )
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5432/backero_cos"

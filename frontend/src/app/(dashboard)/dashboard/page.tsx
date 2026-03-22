@@ -119,7 +119,7 @@ export default function DashboardPage() {
           value={formatCurrency(kpis?.net_profit ?? 0)}
           subtitle="Revenue − Expenses"
           icon={Receipt}
-          color="bg-brand-rose"
+          color="bg-brand-green"
           trend={(kpis?.net_profit ?? 0) >= 0 ? "up" : "down"}
         />
         <KPICard

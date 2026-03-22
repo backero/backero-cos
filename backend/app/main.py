@@ -1,113 +1,104 @@
+import re
+import uvicorn
 import logging
-import logging.config
-import traceback
+import sys
+import os
+from pathlib import Path
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from typing import AsyncGenerator
 
-from fastapi import FastAPI, Request, status
-from fastapi.exceptions import RequestValidationError
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 
+# Ensure 'app' is in path regardless of CWD
+current_dir = Path(__file__).resolve().parent
+if current_dir.name == "app":
+    sys.path.append(str(current_dir.parent))
+
+# Current project imports
 from app.api.v1.router import api_router
+from app.api.v1.roles.model import Role, RoleModulePermission  # noqa: F401 — registers models with Base
 from app.core.config import settings
-from app.db.init_db import seed_admin
+from app.db.init_db import init_db
 from app.db.session import Base, engine
 from app.utils.scheduler import start_scheduler, stop_scheduler
 
-logging.config.dictConfig({
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "default": {
-            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        }
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "formatter": "default",
-        }
-    },
-    "loggers": {
-        "sqlalchemy.engine": {"level": "WARNING"},
-        "apscheduler": {"level": "WARNING"},
-    },
-    "root": {
-        "level": "INFO",
-        "handlers": ["console"],
-    },
-})
-
+# Simple logger
 logger = logging.getLogger(__name__)
 
-
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    logger.info("Starting up — creating database tables...")
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Startup and shutdown events."""
+    print("Starting server — setting up database tables...")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    logger.info("Seeding admin user...")
-    await seed_admin()
-    logger.info("Starting scheduler...")
+
+    print("Seeding initial data...")
+    await init_db()
+
+    print("Starting scheduler...")
     start_scheduler()
-    logger.info("Startup complete.")
+    
     yield
-    logger.info("Shutting down scheduler...")
+    
+    print("Shutting down...")
     stop_scheduler()
     await engine.dispose()
-    logger.info("Shutdown complete.")
-
 
 app = FastAPI(
     title="Backero COS API",
     version="1.0.0",
-    description="Company Operating System for Backero Cosmetics",
     lifespan=lifespan,
-    docs_url=None if settings.ENVIRONMENT == "production" else "/docs",
-    redoc_url=None if settings.ENVIRONMENT == "production" else "/redoc",
+    docs_url="/docs" if settings.ENVIRONMENT != "production" else None
 )
 
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request: Request, exc: IntegrityError) -> JSONResponse:
+    """Convert SQLAlchemy unique/FK violations into readable 409 responses."""
+    err = str(exc.orig)
+
+    # asyncpg unique violation: Key (col)=(val) already exists.
+    match = re.search(r'Key \((.+?)\)=\((.+?)\) already exists', err)
+    if match:
+        field, value = match.group(1), match.group(2)
+        field_label = field.replace("_", " ").capitalize()
+        return JSONResponse(
+            status_code=409,
+            content={"detail": f"{field_label} '{value}' is already taken.", "field": field},
+        )
+
+    # FK violation
+    if "foreign key" in err.lower() or "violates foreign key" in err.lower():
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "Referenced record does not exist.", "field": None},
+        )
+
+    return JSONResponse(
+        status_code=409,
+        content={"detail": "A record with these details already exists.", "field": None},
+    )
+
+
+# Middleware setup
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Field"],
 )
 
+# Unified router inclusion
 app.include_router(api_router, prefix="/api/v1")
 
-
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    logger.warning("Validation error on %s %s: %s", request.method, request.url.path, exc.errors())
-    return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": exc.errors()},
-    )
-
-
-@app.exception_handler(Exception)
-async def unhandled_exception_handler(request: Request, exc: Exception):
-    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "Internal server error"},
-    )
-
-
-@app.get("/health", tags=["health"])
-async def health():
-    return {
-        "status": "ok",
-        "service": "backero-cos-api",
-        "version": "1.0.0",
-        "environment": settings.ENVIRONMENT,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
-
-
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True
+    )
