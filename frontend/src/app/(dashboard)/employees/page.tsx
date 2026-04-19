@@ -87,7 +87,7 @@ type ViewMode = "card" | "table";
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function EmployeesPage() {
+export default function EmployeesPage() { 
   const { modals, openModal, closeModal } = useUIStore();
   const { canCreate, canEdit } = useAuthStore();
   const [deptFilter, setDeptFilter] = useState("");
