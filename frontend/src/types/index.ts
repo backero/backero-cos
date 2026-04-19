@@ -104,8 +104,24 @@ export interface Attendance {
 }
 
 // ── Tasks ───────────────────────────────────────────────────────────────────
-export type TaskPriority = "low" | "medium" | "high" | "urgent";
-export type TaskStatus = "pending" | "in_progress" | "completed" | "overdue";
+export type TaskPriority = "low" | "medium" | "high" | "critical";
+export type TaskStatus = "todo" | "in_progress" | "review" | "done" | "overdue";
+
+export interface EmployeePreview {
+  id: string;
+  name: string;
+  avatar_url?: string | null;
+  designation?: string | null;
+}
+
+export interface TaskComment {
+  id: string;
+  task_id: string;
+  author_id: string;
+  content: string;
+  created_at: string;
+  author?: EmployeePreview | null;
+}
 
 export interface Task {
   id: string;
@@ -121,6 +137,24 @@ export interface Task {
   extension_requested: boolean;
   extension_reason?: string | null;
   extension_days: number | null;
+  created_at: string;
+  updated_at: string;
+  assigned_to?: EmployeePreview | null;
+  created_by?: EmployeePreview | null;
+  comments: TaskComment[];
+  comments_count: number;
+}
+
+// ── Notifications ────────────────────────────────────────────────────────────
+export type NotificationType = "task_assigned" | "status_changed" | "comment_added" | "task_overdue";
+
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  task_id?: string | null;
+  is_read: boolean;
   created_at: string;
 }
 

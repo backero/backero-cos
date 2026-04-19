@@ -140,7 +140,13 @@ export function useCreateDepartment() {
 }
 
 // ── Tasks ─────────────────────────────────────────────────────────────────────
-export function useTasks(params?: { status?: string; priority?: string; assigned_to_id?: string }) {
+export function useTasks(params?: {
+  status?: string;
+  priority?: string;
+  assigned_to_id?: string;
+  department_id?: string;
+  search?: string;
+}) {
   return useQuery({
     queryKey: QK.tasks(params),
     queryFn: () => api.tasks.list(params),
@@ -173,6 +179,33 @@ export function useUpdateTask() {
   });
 }
 
+export function useUpdateTaskStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      api.tasks.updateStatus(id, status),
+    onMutate: async ({ id, status }) => {
+      // optimistic update
+      await qc.cancelQueries({ queryKey: ["tasks"] });
+      const prev = qc.getQueriesData({ queryKey: ["tasks"] });
+      qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((t: { id: string }) => t.id === id ? { ...t, status } : t);
+      });
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) {
+        ctx.prev.forEach(([key, data]) => qc.setQueryData(key, data));
+      }
+      handleApiError(_e);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+}
+
 export function useCompleteTask() {
   const qc = useQueryClient();
   return useMutation({
@@ -180,7 +213,7 @@ export function useCompleteTask() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["tasks"] });
       qc.invalidateQueries({ queryKey: QK.kpis });
-      toast.success("Task marked as complete");
+      toast.success("Task marked as done");
     },
     onError: (e) => handleApiError(e),
   });
@@ -198,11 +231,62 @@ export function useDeleteTask() {
   });
 }
 
+export function useAddComment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ taskId, content }: { taskId: string; content: string }) =>
+      api.tasks.addComment(taskId, content),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+
 export function useComplianceTasks() {
   return useQuery({
     queryKey: ["compliance-tasks"],
     queryFn: () => api.tasks.compliance(),
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+export function useNotifications(unread_only = false) {
+  return useQuery({
+    queryKey: ["notifications", { unread_only }],
+    queryFn: () => api.notifications.list(unread_only),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useUnreadCount() {
+  return useQuery({
+    queryKey: ["notifications-count"],
+    queryFn: () => api.notifications.unreadCount(),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useMarkNotificationRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.notifications.markRead(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+      qc.invalidateQueries({ queryKey: ["notifications-count"] });
+    },
+  });
+}
+
+export function useMarkAllNotificationsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.notifications.markAllRead(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+      qc.invalidateQueries({ queryKey: ["notifications-count"] });
+    },
   });
 }
 

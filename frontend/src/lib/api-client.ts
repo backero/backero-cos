@@ -27,6 +27,7 @@ import type {
   Module,
   ModuleAccess,
   MonthlyTrend,
+  Notification,
   PlatformOrder,
   PlatformSummary,
   Product,
@@ -34,6 +35,7 @@ import type {
   RawMaterial,
   RoleDetail,
   Task,
+  TaskComment,
 } from "@/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
@@ -174,7 +176,10 @@ export const api = {
       status?: string;
       priority?: string;
       assigned_to_id?: string;
+      department_id?: string;
+      search?: string;
     }) => clientFetch<Task[]>("/tasks/", { params }),
+    get: (id: string) => clientFetch<Task>(`/tasks/${id}`),
     create: (data: Record<string, unknown>) =>
       clientFetch<Task>("/tasks/", {
         method: "POST",
@@ -185,11 +190,32 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
+    updateStatus: (id: string, status: string) =>
+      clientFetch<Task>(`/tasks/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }),
     complete: (id: string) =>
       clientFetch<Task>(`/tasks/${id}/complete`, { method: "POST" }),
     delete: (id: string) =>
       clientFetch<{ message: string }>(`/tasks/${id}`, { method: "DELETE" }),
     compliance: () => clientFetch<ComplianceTask[]>("/tasks/compliance"),
+    addComment: (taskId: string, content: string) =>
+      clientFetch<TaskComment>(`/tasks/${taskId}/comments`, {
+        method: "POST",
+        body: JSON.stringify({ content }),
+      }),
+  },
+
+  // Notifications
+  notifications: {
+    list: (unread_only?: boolean) =>
+      clientFetch<Notification[]>("/notifications/", { params: { unread_only } }),
+    unreadCount: () => clientFetch<{ count: number }>("/notifications/unread-count"),
+    markRead: (id: string) =>
+      clientFetch<{ message: string }>(`/notifications/${id}/read`, { method: "PATCH" }),
+    markAllRead: () =>
+      clientFetch<{ message: string }>("/notifications/mark-all-read", { method: "PATCH" }),
   },
 
   // Finance
