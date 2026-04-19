@@ -19,6 +19,7 @@ import {
   Plus,
   Search,
   UserCheck,
+  UserX,
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -94,6 +95,7 @@ export default function EmployeesPage() {
   const [deptDialog, setDeptDialog] = useState(false);
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("card");
+  const [activeFilter, setActiveFilter] = useState<"active" | "inactive">("active");
   const { user } = useAuthStore();
 
   const canCreateEmp = canCreate("employees");
@@ -102,7 +104,7 @@ export default function EmployeesPage() {
 
   const { data: employees, isLoading } = useEmployees({
     department_id: deptFilter || undefined,
-    is_active: true,
+    is_active: activeFilter === "active",
   });
   const { data: departments } = useDepartments();
   const { data: roles = [] } = useRoles();
@@ -180,7 +182,7 @@ export default function EmployeesPage() {
           {/* Stats */}
           <div className="grid grid-cols-3 gap-4">
             {[
-              { label: "Total Active",  value: employees?.length ?? 0, icon: Users,     color: "bg-blue-500" },
+              { label: activeFilter === "active" ? "Total Active" : "Total Inactive", value: employees?.length ?? 0, icon: activeFilter === "active" ? Users : UserX, color: activeFilter === "active" ? "bg-blue-500" : "bg-slate-400" },
               { label: "Present Today", value: "—",                    icon: UserCheck,  color: "bg-green-500" },
               { label: "Departments",   value: departments?.length ?? 0, icon: Building2, color: "bg-purple-500" },
             ].map((stat, i) => (
@@ -207,6 +209,32 @@ export default function EmployeesPage() {
 
           {/* Filters + View toggle */}
           <div className="flex items-center gap-3 flex-wrap">
+            {/* Active / Inactive toggle */}
+            <div className="flex items-center rounded-md border border-border overflow-hidden text-sm">
+              <button
+                onClick={() => setActiveFilter("active")}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 h-9 transition-colors",
+                  activeFilter === "active"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted",
+                )}
+              >
+                <Users className="w-3.5 h-3.5" /> Active
+              </button>
+              <button
+                onClick={() => setActiveFilter("inactive")}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 h-9 transition-colors",
+                  activeFilter === "inactive"
+                    ? "bg-slate-500 text-white"
+                    : "text-muted-foreground hover:bg-muted",
+                )}
+              >
+                <UserX className="w-3.5 h-3.5" /> Inactive
+              </button>
+            </div>
+
             <div className="relative flex-1 min-w-48">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
@@ -539,6 +567,14 @@ function EditEmployeeSheet({
     }
   }
 
+  async function toggleActive() {
+    await updateEmployee.mutateAsync({
+      id: employee.id,
+      data: { is_active: !employee.is_active },
+    });
+    onClose();
+  }
+
   return (
     <Sheet open onOpenChange={(o) => !o && onClose()}>
       <SheetContent>
@@ -550,11 +586,31 @@ function EditEmployeeSheet({
           <SheetBody className="space-y-4">
             <EmployeeFormFields form={form} roles={roles} departments={departments} />
           </SheetBody>
-          <SheetFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={updateEmployee.isPending}>
-              {updateEmployee.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}
-              Save Changes
+          <SheetFooter className="flex-col gap-2 sm:flex-col">
+            <div className="flex gap-2 w-full">
+              <Button type="button" variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
+              <Button type="submit" disabled={updateEmployee.isPending} className="flex-1">
+                {updateEmployee.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}
+                Save Changes
+              </Button>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className={cn(
+                "w-full gap-2",
+                employee.is_active
+                  ? "border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400"
+                  : "border-green-300 text-green-700 hover:bg-green-50 dark:border-green-800 dark:text-green-400",
+              )}
+              onClick={toggleActive}
+              disabled={updateEmployee.isPending}
+            >
+              {employee.is_active ? (
+                <><UserX className="w-4 h-4" /> Deactivate Employee</>
+              ) : (
+                <><UserCheck className="w-4 h-4" /> Activate Employee</>
+              )}
             </Button>
           </SheetFooter>
         </form>
@@ -617,7 +673,7 @@ function EmployeeTable({
                 {/* Name + avatar */}
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <Avatar className="w-8 h-8 shrink-0">
+                    <Avatar className={cn("w-8 h-8 shrink-0", !emp.is_active && "opacity-50")}>
                       <AvatarImage
                         src={emp.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.name)}&background=4d8731&color=fff&size=32`}
                         alt={emp.name}
@@ -628,9 +684,12 @@ function EmployeeTable({
                     </Avatar>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-medium text-foreground truncate">{emp.name}</span>
+                        <span className={cn("font-medium truncate", emp.is_active ? "text-foreground" : "text-muted-foreground")}>{emp.name}</span>
                         {isCurrentUser && (
                           <Badge className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-0 shrink-0">You</Badge>
+                        )}
+                        {!emp.is_active && (
+                          <Badge className="text-[10px] px-1.5 py-0 bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400 border-0 shrink-0">Inactive</Badge>
                         )}
                       </div>
                       {emp.designation && (
@@ -900,7 +959,7 @@ function EmployeeCard({
       transition={{ delay: index * 0.06, duration: 0.35 }}
       whileHover={{ y: -2 }}
     >
-      <Card className={cn("overflow-hidden hover:shadow-md transition-shadow", isCurrentUser && "border-primary/30")}>
+      <Card className={cn("overflow-hidden hover:shadow-md transition-shadow", isCurrentUser && "border-primary/30", !employee.is_active && "opacity-60")}>
         <CardContent className="p-5">
           {/* Avatar + Name + Edit button */}
           <div className="flex items-start gap-3 mb-4">
@@ -921,6 +980,9 @@ function EmployeeCard({
                 <p className="text-sm font-semibold truncate">{employee.name}</p>
                 {isCurrentUser && (
                   <Badge className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-0">You</Badge>
+                )}
+                {!employee.is_active && (
+                  <Badge className="text-[10px] px-1.5 py-0 bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400 border-0">Inactive</Badge>
                 )}
               </div>
               <p className="text-xs text-muted-foreground truncate">{employee.designation ?? "—"}</p>
