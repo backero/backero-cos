@@ -1,10 +1,12 @@
 from typing import Optional
 
-from fastapi import Depends, Query
+from fastapi import Depends, Query, UploadFile, File
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import AdminUser, CurrentUser
 from app.db.session import get_db
+from app.utils import excel as xl
 
 from . import service
 from .schema import (
@@ -16,6 +18,8 @@ from .schema import (
     EmployeeResponse,
     EmployeeUpdate,
 )
+
+_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 async def list_departments(
@@ -92,3 +96,39 @@ async def get_attendance(
     current_user: CurrentUser = None,
 ) -> list[AttendanceResponse]:
     return await service.get_attendance(db, employee_id, month, year)
+
+
+# ── Import / Export ───────────────────────────────────────────────────────────
+
+async def export_employees(
+    db: AsyncSession = Depends(get_db),
+    current_user: AdminUser = None,
+):
+    employees = await service.list_employees(db, is_active=None)
+    data = xl.export_employees([e.model_dump() for e in employees])
+    return Response(content=data, media_type=_XLSX,
+                    headers={"Content-Disposition": "attachment; filename=employees.xlsx"})
+
+
+async def employees_sample():
+    return Response(content=xl.employees_sample(), media_type=_XLSX,
+                    headers={"Content-Disposition": "attachment; filename=employees_sample.xlsx"})
+
+
+async def import_employees(
+    file: UploadFile = File(...),
+    current_user: AdminUser = None,
+    db: AsyncSession = Depends(get_db),
+):
+    contents = await file.read()
+    rows, errors = xl.parse_employees(contents)
+    created, skipped = [], []
+    for row in rows:
+        try:
+            join_date = row.pop("join_date", None)
+            emp = await service.create_employee(db, EmployeeCreate(**row, join_date=join_date))
+            created.append(emp.name)
+            await db.commit()
+        except Exception as e:
+            skipped.append(f"{row.get('name', '?')}: {str(e)}")
+    return {"created": len(created), "skipped": len(skipped), "errors": errors + skipped}

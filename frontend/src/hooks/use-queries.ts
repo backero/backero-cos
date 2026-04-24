@@ -497,6 +497,95 @@ export function useCreatePlatformOrder() {
   });
 }
 
+// ── Import / Export helpers ───────────────────────────────────────────────────
+
+type ImportResult = { created: number; skipped: number; errors: string[] };
+
+export function useExportProducts() {
+  return useMutation({ mutationFn: () => api.inventory.products.export(), onError: (e) => handleApiError(e) });
+}
+export function useImportProducts() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => api.inventory.products.import(file),
+    onSuccess: (r: ImportResult) => {
+      qc.invalidateQueries({ queryKey: ["products"] });
+      toast.success(`Imported ${r.created} products${r.skipped ? `, skipped ${r.skipped}` : ""}`);
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+export function useExportRawMaterials() {
+  return useMutation({ mutationFn: () => api.inventory.rawMaterials.export(), onError: (e) => handleApiError(e) });
+}
+export function useImportRawMaterials() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => api.inventory.rawMaterials.import(file),
+    onSuccess: (r: ImportResult) => {
+      qc.invalidateQueries({ queryKey: QK.rawMaterials });
+      toast.success(`Imported ${r.created} materials${r.skipped ? `, skipped ${r.skipped}` : ""}`);
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+export function useExportPlatformOrders() {
+  return useMutation({ mutationFn: (params?: { platform?: string }) => api.inventory.platformOrders.export(params), onError: (e) => handleApiError(e) });
+}
+export function useImportPlatformOrders() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => api.inventory.platformOrders.import(file),
+    onSuccess: (r: ImportResult) => {
+      qc.invalidateQueries({ queryKey: ["platform-orders"] });
+      toast.success(`Imported ${r.created} orders${r.skipped ? `, skipped ${r.skipped}` : ""}`);
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+export function useExportFinanceEntries() {
+  return useMutation({ mutationFn: (params?: { type?: string }) => api.finance.entries.export(params), onError: (e) => handleApiError(e) });
+}
+export function useImportFinanceEntries() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => api.finance.entries.import(file),
+    onSuccess: (r: ImportResult) => {
+      qc.invalidateQueries({ queryKey: ["entries"] });
+      qc.invalidateQueries({ queryKey: ["finance-summary"] });
+      toast.success(`Imported ${r.created} entries${r.skipped ? `, skipped ${r.skipped}` : ""}`);
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+export function useExportInvoices() {
+  return useMutation({ mutationFn: (params?: { status?: string }) => api.finance.invoices.export(params), onError: (e) => handleApiError(e) });
+}
+export function useExportEmployees() {
+  return useMutation({ mutationFn: () => api.employees.export(), onError: (e) => handleApiError(e) });
+}
+export function useImportEmployees() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => api.employees.import(file),
+    onSuccess: (r: ImportResult) => {
+      qc.invalidateQueries({ queryKey: ["employees"] });
+      toast.success(`Imported ${r.created} employees${r.skipped ? `, skipped ${r.skipped}` : ""}`);
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+export function useExportTasks() {
+  return useMutation({ mutationFn: (params?: { status?: string; priority?: string }) => api.tasks.export(params), onError: (e) => handleApiError(e) });
+}
+export function useDownloadInvoicePdf() {
+  return useMutation({
+    mutationFn: ({ id, invoiceNumber }: { id: string; invoiceNumber: string }) =>
+      api.finance.invoices.downloadPdf(id, invoiceNumber),
+    onError: (e) => handleApiError(e),
+  });
+}
+
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export function useDashboardKPIs() {
   return useQuery({

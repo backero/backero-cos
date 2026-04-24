@@ -81,6 +81,17 @@ async def create_invoice(
     return InvoiceResponse.model_validate(inv)
 
 
+async def get_invoice(db: AsyncSession, invoice_id: str) -> InvoiceResponse:
+    from fastapi import HTTPException
+    result = await db.execute(
+        select(Invoice).options(selectinload(Invoice.items)).where(Invoice.id == uuid.UUID(invoice_id))
+    )
+    inv = result.scalar_one_or_none()
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return InvoiceResponse.model_validate(inv)
+
+
 async def update_invoice_status(
     db: AsyncSession, invoice_id: str, status: str
 ) -> InvoiceResponse:

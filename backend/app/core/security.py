@@ -4,15 +4,21 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-# import redis.asyncio as aioredis  # Redis commented out — using in-memory store for MVP
+import redis.asyncio as aioredis
 from jose import jwt
 
 from app.core.config import settings
 
-# ── In-memory OTP store ───────────────────────────────────────────────────────
-# Redis is not used for MVP. All OTPs are stored in process memory with TTL.
-# { key: (value, expires_at_unix_timestamp) }
+# ── OTP store — Redis with in-memory fallback ─────────────────────────────────
+_redis: Optional[aioredis.Redis] = None
 _mem_store: dict[str, tuple[str, float]] = {}
+
+
+def _get_redis() -> aioredis.Redis:
+    global _redis
+    if _redis is None:
+        _redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=1)
+    return _redis
 
 
 def _mem_set(key: str, value: str, ttl: int) -> None:
@@ -21,7 +27,7 @@ def _mem_set(key: str, value: str, ttl: int) -> None:
 
 def _mem_get(key: str) -> Optional[str]:
     entry = _mem_store.get(key)
-    if entry is None:
+    if not entry:
         return None
     value, expires_at = entry
     if time.time() > expires_at:
@@ -56,16 +62,28 @@ def generate_otp(length: int = 6) -> str:
     return "".join(random.choices(string.digits, k=length))
 
 
-# ── OTP store (in-memory) ─────────────────────────────────────────────────────
+# ── OTP store ─────────────────────────────────────────────────────────────────
 
 async def store_otp(phone: str, otp: str, ttl: int = 300) -> None:
-    _mem_set(f"otp:{phone}", otp, ttl)
+    try:
+        r = _get_redis()
+        await r.setex(f"otp:{phone}", ttl, otp)
+    except Exception:
+        _mem_set(f"otp:{phone}", otp, ttl)
 
 
 async def verify_otp(phone: str, otp: str) -> bool:
     key = f"otp:{phone}"
-    stored = _mem_get(key)
-    if stored and stored == otp:
-        _mem_delete(key)
-        return True
-    return False
+    try:
+        r = _get_redis()
+        stored = await r.get(key)
+        if stored and stored == otp:
+            await r.delete(key)
+            return True
+        return False
+    except Exception:
+        stored = _mem_get(key)
+        if stored and stored == otp:
+            _mem_delete(key)
+            return True
+        return False

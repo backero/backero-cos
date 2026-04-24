@@ -63,15 +63,20 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
   useAddComment,
+  useComplianceTasks,
   useCreateTask,
   useDeleteTask,
   useEmployees,
+  useExportTasks,
   useUpdateTask,
   useUpdateTaskStatus,
   useTasks,
 } from "@/hooks/use-queries";
+import { ImportExportMenu } from "@/components/ImportExportMenu";
+import { api } from "@/lib/api-client";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import type { Task, TaskStatus } from "@/types";
+import type { ComplianceTask, Task, TaskStatus } from "@/types";
 import { useAuthStore } from "@/stores/auth-store";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -258,7 +263,7 @@ function TaskDetailSheet({
   const { user } = useAuthStore();
 
   const canEdit = user?.role !== "employee" || task?.assigned_to_id === user?.id;
-  const canDelete = task?.created_by_id === user?.id || user?.role === "super_admin" || (user?.permissions?.tasks?.can_edit ?? false);
+  const canDelete = task?.created_by_id === user?.id || user?.role === "super_admin";
 
   const form = useForm<EditForm>({
     resolver: zodResolver(editSchema),
@@ -580,6 +585,43 @@ function CreateTaskSheet({ open, onClose, employees }: { open: boolean; onClose:
   );
 }
 
+// ── Compliance Tasks Tab ──────────────────────────────────────────────────────
+const COMPLIANCE_CATEGORY_COLOR: Record<string, string> = {
+  gst: "bg-orange-100 text-orange-700",
+  tds: "bg-blue-100 text-blue-700",
+  roc: "bg-purple-100 text-purple-700",
+  other: "bg-slate-100 text-slate-600",
+};
+
+function ComplianceTasksTab() {
+  const { data: tasks = [], isLoading } = useComplianceTasks();
+  if (isLoading) return <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{[1,2,3].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>;
+  if (!tasks.length) return <div className="text-center py-16 text-slate-400 text-sm">No compliance tasks found</div>;
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {tasks.map((t: ComplianceTask) => (
+        <div key={t.id} className={cn("rounded-xl border p-4 space-y-2", t.is_completed ? "opacity-50 bg-slate-50 dark:bg-slate-900" : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700")}>
+          <div className="flex items-center gap-2">
+            <span className={cn("text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full", COMPLIANCE_CATEGORY_COLOR[t.category ?? "other"] ?? COMPLIANCE_CATEGORY_COLOR.other)}>
+              {t.category?.toUpperCase()}
+            </span>
+            {t.recurrence && <span className="text-[10px] text-slate-400">{t.recurrence}</span>}
+          </div>
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 line-clamp-2">{t.title}</p>
+          {t.description && <p className="text-xs text-slate-500 line-clamp-2">{t.description}</p>}
+          <div className="flex items-center gap-1.5 text-xs">
+            <Calendar className="w-3 h-3 text-slate-400" />
+            <span className={cn(t.due_date && isPast(new Date(t.due_date)) && !t.is_completed ? "text-red-500 font-medium" : "text-slate-500")}>
+              Due {format(new Date(t.due_date), "dd MMM yyyy")}
+            </span>
+            {t.is_completed && <span className="ml-auto text-emerald-600 font-medium flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Done</span>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function TasksPage() {
   const [createOpen, setCreateOpen] = useState(false);
@@ -593,6 +635,7 @@ export default function TasksPage() {
 
   const { user } = useAuthStore();
   const canCreate = user?.permissions?.tasks?.can_create ?? true;
+  const exportTasks = useExportTasks();
 
   const { data: employees = [] } = useEmployees({ is_active: true });
   const { data: tasks = [], isLoading } = useTasks({
@@ -662,11 +705,21 @@ export default function TasksPage() {
               {overdueTasks > 0 && <span className="ml-2 text-red-500 font-medium">· {overdueTasks} overdue</span>}
             </p>
           </div>
-          {canCreate && (
-            <Button onClick={() => setCreateOpen(true)} size="sm" className="gap-1.5">
-              <Plus className="w-4 h-4" /> New Task
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            <ImportExportMenu
+              onExport={() => exportTasks.mutateAsync({})}
+              onImport={() => {}}
+              onSampleDownload={() => {}}
+              exportLabel="Export Tasks"
+              importLabel="Import Tasks"
+              isExporting={exportTasks.isPending}
+            />
+            {canCreate && (
+              <Button onClick={() => setCreateOpen(true)} size="sm" className="gap-1.5">
+                <Plus className="w-4 h-4" /> New Task
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -709,30 +762,43 @@ export default function TasksPage() {
         </div>
       </div>
 
-      {/* Kanban Board */}
-      <div className="flex-1 overflow-auto p-6 min-h-0">
-        {isLoading ? (
-          <div className="flex gap-4 h-full">
-            {COLUMNS.map((c) => (
-              <div key={c.id} className="flex-1 min-w-0 space-y-3">
-                <Skeleton className="h-12 rounded-xl" />
-                {[1, 2, 3].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      {/* Board + Compliance Tabs */}
+      <Tabs defaultValue="board" className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-shrink-0 px-6 pt-3 border-b border-slate-100 dark:border-slate-800">
+          <TabsList className="h-8">
+            <TabsTrigger value="board" className="text-xs">Kanban Board</TabsTrigger>
+            <TabsTrigger value="compliance" className="text-xs">Compliance</TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent value="board" className="flex-1 overflow-auto m-0 p-6 min-h-0">
+          {isLoading ? (
             <div className="flex gap-4 h-full">
-              {COLUMNS.map((col) => (
-                <KanbanColumn key={col.id} column={col} tasks={columnTasks[col.id] ?? []} onOpen={setSelectedTask} />
+              {COLUMNS.map((c) => (
+                <div key={c.id} className="flex-1 min-w-0 space-y-3">
+                  <Skeleton className="h-12 rounded-xl" />
+                  {[1, 2, 3].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+                </div>
               ))}
             </div>
-            <DragOverlay>
-              {activeTask && <TaskCard task={activeTask} onOpen={() => {}} isDraggingOverlay />}
-            </DragOverlay>
-          </DndContext>
-        )}
-      </div>
+          ) : (
+            <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+              <div className="flex gap-4 h-full">
+                {COLUMNS.map((col) => (
+                  <KanbanColumn key={col.id} column={col} tasks={columnTasks[col.id] ?? []} onOpen={setSelectedTask} />
+                ))}
+              </div>
+              <DragOverlay>
+                {activeTask && <TaskCard task={activeTask} onOpen={() => {}} isDraggingOverlay />}
+              </DragOverlay>
+            </DndContext>
+          )}
+        </TabsContent>
+
+        <TabsContent value="compliance" className="flex-1 overflow-auto m-0 p-6">
+          <ComplianceTasksTab />
+        </TabsContent>
+      </Tabs>
 
       <CreateTaskSheet open={createOpen} onClose={() => setCreateOpen(false)} employees={employees} />
       <TaskDetailSheet

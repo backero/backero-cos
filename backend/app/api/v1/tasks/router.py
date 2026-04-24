@@ -6,6 +6,7 @@ from .schema import ComplianceTaskResponse, TaskCommentResponse, TaskResponse
 router = APIRouter()
 
 router.get("/compliance", response_model=list[ComplianceTaskResponse])(controller.list_compliance_tasks)
+router.get("/export")(controller.export_tasks)
 router.get("/", response_model=list[TaskResponse])(controller.list_tasks)
 router.post("/", response_model=TaskResponse)(controller.create_task)
 router.get("/{task_id}", response_model=TaskResponse)(controller.get_task)

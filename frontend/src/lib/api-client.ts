@@ -79,6 +79,50 @@ export async function serverFetch<T>(
   return res.json();
 }
 
+/** Download a file from the API and trigger browser download */
+export async function clientDownload(path: string, filename: string, options: FetchOptions = {}): Promise<void> {
+  const { params, ...init } = options;
+  const url = buildUrl(path, params);
+  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const res = await fetch(url, {
+    ...init,
+    credentials: "include",
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init.headers },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Download failed" }));
+    throw new ApiError(err.detail || "Download failed", res.status);
+  }
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(blobUrl);
+}
+
+/** Upload a file and return JSON response */
+export async function clientUpload<T>(path: string, file: File): Promise<T> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const url = buildUrl(path);
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Upload failed" }));
+    throw new ApiError(err.detail || "Upload failed", res.status);
+  }
+  return res.json();
+}
+
 /** Client-side fetch — used inside TanStack Query hooks */
 export async function clientFetch<T>(
   path: string,
@@ -159,6 +203,9 @@ export const api = {
       clientFetch<Attendance[]>(`/employees/${id}/attendance`, {
         params: { month, year },
       }),
+    export: () => clientDownload("/employees/export", "employees.xlsx"),
+    sample: () => clientDownload("/employees/sample", "employees_sample.xlsx"),
+    import: (file: File) => clientUpload<{ created: number; skipped: number; errors: string[] }>("/employees/import", file),
 
     departments: {
       list: () => clientFetch<Department[]>("/employees/departments"),
@@ -200,6 +247,8 @@ export const api = {
     delete: (id: string) =>
       clientFetch<{ message: string }>(`/tasks/${id}`, { method: "DELETE" }),
     compliance: () => clientFetch<ComplianceTask[]>("/tasks/compliance"),
+    export: (params?: { status?: string; priority?: string }) =>
+      clientDownload("/tasks/export", "tasks.xlsx", { params }),
     addComment: (taskId: string, content: string) =>
       clientFetch<TaskComment>(`/tasks/${taskId}/comments`, {
         method: "POST",
@@ -231,11 +280,15 @@ export const api = {
           method: "POST",
           body: JSON.stringify(data),
         }),
-      updateStatus: (id: string, status: string) =>
+        updateStatus: (id: string, status: string) =>
         clientFetch<Invoice>(
           `/finance/invoices/${id}/status?status=${status}`,
           { method: "PATCH" },
         ),
+      downloadPdf: (id: string, invoiceNumber: string) =>
+        clientDownload(`/finance/invoices/${id}/pdf`, `invoice-${invoiceNumber}.pdf`),
+      export: (params?: { status?: string; from_date?: string; to_date?: string }) =>
+        clientDownload("/finance/invoices/export", "invoices.xlsx", { params }),
     },
     entries: {
       list: (params?: {
@@ -248,6 +301,10 @@ export const api = {
           method: "POST",
           body: JSON.stringify(data),
         }),
+      export: (params?: { type?: string; from_date?: string; to_date?: string }) =>
+        clientDownload("/finance/entries/export", "finance_entries.xlsx", { params }),
+      sample: () => clientDownload("/finance/entries/sample", "entries_sample.xlsx"),
+      import: (file: File) => clientUpload<{ created: number; skipped: number; errors: string[] }>("/finance/entries/import", file),
     },
     summary: (params?: { from_date?: string; to_date?: string }) =>
       clientFetch<FinanceSummary>("/finance/summary", { params }),
@@ -269,6 +326,9 @@ export const api = {
           method: "POST",
           body: JSON.stringify({ quantity, reason }),
         }),
+      export: () => clientDownload("/inventory/products/export", "products.xlsx"),
+      sample: () => clientDownload("/inventory/products/sample", "products_sample.xlsx"),
+      import: (file: File) => clientUpload<{ created: number; skipped: number; errors: string[] }>("/inventory/products/import", file),
     },
     rawMaterials: {
       list: () => clientFetch<RawMaterial[]>("/inventory/raw-materials"),
@@ -282,6 +342,9 @@ export const api = {
           method: "PATCH",
           body: JSON.stringify({ quantity, reason }),
         }),
+      export: () => clientDownload("/inventory/raw-materials/export", "raw_materials.xlsx"),
+      sample: () => clientDownload("/inventory/raw-materials/sample", "raw_materials_sample.xlsx"),
+      import: (file: File) => clientUpload<{ created: number; skipped: number; errors: string[] }>("/inventory/raw-materials/import", file),
     },
     batches: {
       list: (params?: { status?: string }) =>
@@ -309,6 +372,10 @@ export const api = {
           method: "POST",
           body: JSON.stringify(data),
         }),
+      export: (params?: { platform?: string; from_date?: string; to_date?: string }) =>
+        clientDownload("/inventory/platform-orders/export", "platform_orders.xlsx", { params }),
+      sample: () => clientDownload("/inventory/platform-orders/sample", "platform_orders_sample.xlsx"),
+      import: (file: File) => clientUpload<{ created: number; skipped: number; errors: string[] }>("/inventory/platform-orders/import", file),
     },
     platformSummary: (order_date?: string) =>
       clientFetch<PlatformSummary[]>("/inventory/platform-summary", {

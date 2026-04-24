@@ -45,9 +45,15 @@ import {
   useAdjustStock,
   useCreatePlatformOrder,
   useCreateProduct,
+  useExportPlatformOrders,
+  useExportProducts,
+  useImportPlatformOrders,
+  useImportProducts,
   usePlatformSummary,
   useProducts,
 } from "@/hooks/use-queries";
+import { ImportExportMenu } from "@/components/ImportExportMenu";
+import { api } from "@/lib/api-client";
 import {
   cn,
   formatCurrency,
@@ -111,6 +117,10 @@ export default function InventoryPage() {
   const createProduct = useCreateProduct();
   const adjustStock = useAdjustStock();
   const createPlatformOrder = useCreatePlatformOrder();
+  const exportProducts = useExportProducts();
+  const importProducts = useImportProducts();
+  const exportOrders = useExportPlatformOrders();
+  const importOrders = useImportPlatformOrders();
 
   const productForm = useForm<ProductForm>({
     resolver: zodResolver(productSchema),
@@ -225,9 +235,20 @@ export default function InventoryPage() {
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
             Today's Orders by Platform
           </h3>
-          <Button size="sm" variant="outline" onClick={() => openModal("logOrder")}>
-            <Plus className="w-4 h-4 mr-1.5" /> Log Order
-          </Button>
+          <div className="flex items-center gap-2">
+            <ImportExportMenu
+              onExport={() => exportOrders.mutateAsync()}
+              onImport={(f) => importOrders.mutateAsync(f)}
+              onSampleDownload={() => api.inventory.platformOrders.sample()}
+              exportLabel="Export Orders"
+              importLabel="Import Orders"
+              isExporting={exportOrders.isPending}
+              isImporting={importOrders.isPending}
+            />
+            <Button size="sm" variant="outline" onClick={() => openModal("logOrder")}>
+              <Plus className="w-4 h-4 mr-1.5" /> Log Order
+            </Button>
+          </div>
         </div>
         {platformLoading ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -295,6 +316,15 @@ export default function InventoryPage() {
                 ))}
               </SelectContent>
             </Select>
+            <ImportExportMenu
+              onExport={() => exportProducts.mutateAsync()}
+              onImport={(f) => importProducts.mutateAsync(f)}
+              onSampleDownload={() => api.inventory.products.sample()}
+              exportLabel="Export Products"
+              importLabel="Import Products"
+              isExporting={exportProducts.isPending}
+              isImporting={importProducts.isPending}
+            />
             <Button size="sm" onClick={() => openModal("createProduct")}>
               <Plus className="w-4 h-4 mr-1.5" /> Add Product
             </Button>

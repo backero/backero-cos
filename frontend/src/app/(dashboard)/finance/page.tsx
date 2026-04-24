@@ -9,6 +9,7 @@ import { format } from "date-fns";
 import {
   ArrowDownRight,
   ArrowUpRight,
+  Download,
   Loader2,
   Plus,
   Receipt,
@@ -37,11 +38,17 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   useCreateEntry,
   useCreateInvoice,
+  useDownloadInvoicePdf,
   useEntries,
+  useExportFinanceEntries,
+  useExportInvoices,
   useFinanceSummary,
+  useImportFinanceEntries,
   useInvoices,
   useUpdateInvoiceStatus,
 } from "@/hooks/use-queries";
+import { ImportExportMenu } from "@/components/ImportExportMenu";
+import { api } from "@/lib/api-client";
 import { cn, formatCurrency, formatDate, getStatusColor } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
 import type { Invoice } from "@/types";
@@ -94,6 +101,10 @@ export default function FinancePage() {
   const createEntry = useCreateEntry();
   const createInvoice = useCreateInvoice();
   const updateInvoiceStatus = useUpdateInvoiceStatus();
+  const exportInvoices = useExportInvoices();
+  const exportEntries = useExportFinanceEntries();
+  const importEntries = useImportFinanceEntries();
+  const downloadPdf = useDownloadInvoicePdf();
 
   // ── Entry Form ──
   const entryForm = useForm<EntryForm>({
@@ -210,7 +221,20 @@ export default function FinancePage() {
             <TabsTrigger value="entries">Entries</TabsTrigger>
             <TabsTrigger value="invoices">Invoices</TabsTrigger>
           </TabsList>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <ImportExportMenu
+              onExport={() => exportEntries.mutateAsync({})}
+              onImport={(f) => importEntries.mutateAsync(f)}
+              onSampleDownload={() => api.finance.entries.sample()}
+              exportLabel="Export Entries"
+              importLabel="Import Entries"
+              isExporting={exportEntries.isPending}
+              isImporting={importEntries.isPending}
+            />
+            <Button size="sm" variant="outline" onClick={() => exportInvoices.mutateAsync({})} disabled={exportInvoices.isPending}>
+              {exportInvoices.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <ArrowDownRight className="w-3.5 h-3.5 mr-1" />}
+              Export Invoices
+            </Button>
             <Button size="sm" variant="outline" onClick={() => openModal("createInvoice")}>
               <Plus className="w-4 h-4 mr-1" /> Invoice
             </Button>
@@ -271,6 +295,8 @@ export default function FinancePage() {
                 index={i}
                 onStatusChange={(status) => updateInvoiceStatus.mutate({ id: inv.id, status })}
                 statusLoading={updateInvoiceStatus.isPending}
+                onDownloadPdf={() => downloadPdf.mutate({ id: inv.id, invoiceNumber: inv.invoice_number })}
+                pdfLoading={downloadPdf.isPending && downloadPdf.variables?.id === inv.id}
               />
             ))
           )}
@@ -420,12 +446,12 @@ export default function FinancePage() {
                   type="button"
                   onClick={() => invoiceForm.setValue("is_gst", !isGst)}
                   className={cn(
-                    "w-10 h-6 rounded-full transition-colors relative",
+                    "w-10 h-6 rounded-full transition-colors relative overflow-hidden",
                     isGst ? "bg-primary" : "bg-muted-foreground/30"
                   )}
                 >
                   <span className={cn(
-                    "absolute top-1 w-4 h-4 rounded-full bg-white transition-transform",
+                    "absolute top-1 left-0 w-4 h-4 rounded-full bg-white transition-transform",
                     isGst ? "translate-x-5" : "translate-x-1"
                   )} />
                 </button>
@@ -582,11 +608,15 @@ function InvoiceRow({
   index,
   onStatusChange,
   statusLoading,
+  onDownloadPdf,
+  pdfLoading,
 }: {
   invoice: Invoice;
   index: number;
   onStatusChange: (status: string) => void;
   statusLoading: boolean;
+  onDownloadPdf: () => void;
+  pdfLoading: boolean;
 }) {
   const [showActions, setShowActions] = useState(false);
 
@@ -613,16 +643,27 @@ function InvoiceRow({
                 {invoice.due_date && ` · Due ${formatDate(invoice.due_date)}`}
               </p>
             </div>
-            <div className="text-right shrink-0">
+            <div className="text-right shrink-0 space-y-1">
               <p className="text-sm font-bold">{formatCurrency(invoice.total)}</p>
-              {invoice.status !== "paid" && invoice.status !== "cancelled" && (
+              <div className="flex items-center gap-2 justify-end">
                 <button
-                  className="text-[10px] text-primary hover:underline mt-0.5"
-                  onClick={() => setShowActions(!showActions)}
+                  onClick={onDownloadPdf}
+                  disabled={pdfLoading}
+                  className="text-[10px] text-slate-400 hover:text-primary flex items-center gap-0.5 transition-colors"
+                  title="Download PDF"
                 >
-                  Change status
+                  {pdfLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                  PDF
                 </button>
-              )}
+                {invoice.status !== "paid" && invoice.status !== "cancelled" && (
+                  <button
+                    className="text-[10px] text-primary hover:underline"
+                    onClick={() => setShowActions(!showActions)}
+                  >
+                    Status
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 

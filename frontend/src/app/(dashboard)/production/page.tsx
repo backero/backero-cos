@@ -42,12 +42,16 @@ import {
   useBatches,
   useCreateBatch,
   useCreateRawMaterial,
+  useExportRawMaterials,
+  useImportRawMaterials,
   useProducts,
   useRawMaterials,
   useUpdateBatchStatus,
 } from "@/hooks/use-queries";
 import { useUIStore } from "@/stores/ui-store";
 import { cn, formatDate, getStatusColor } from "@/lib/utils";
+import { api } from "@/lib/api-client";
+import { ImportExportMenu } from "@/components/ImportExportMenu";
 import type { ProductionBatch, RawMaterial } from "@/types";
 
 // ── Schemas ────────────────────────────────────────────────────────────────────
@@ -117,6 +121,8 @@ export default function ProductionPage() {
   const updateBatchStatus = useUpdateBatchStatus();
   const createRawMaterial = useCreateRawMaterial();
   const adjustRawMaterial = useAdjustRawMaterial();
+  const exportRawMaterials = useExportRawMaterials();
+  const importRawMaterials = useImportRawMaterials();
 
   const batchForm = useForm<BatchForm>({
     resolver: zodResolver(batchSchema),
@@ -237,6 +243,15 @@ export default function ProductionPage() {
             </TabsTrigger>
           </TabsList>
           <div className="flex items-center gap-2">
+            <ImportExportMenu
+              onExport={() => exportRawMaterials.mutate()}
+              onImport={(file) => importRawMaterials.mutate(file)}
+              onSampleDownload={() => api.inventory.rawMaterials.sample()}
+              isExporting={exportRawMaterials.isPending}
+              isImporting={importRawMaterials.isPending}
+              exportLabel="Export Raw Materials"
+              importLabel="Import Raw Materials"
+            />
             <Button size="sm" variant="outline" onClick={() => openModal("createRawMaterial")}>
               <Plus className="w-4 h-4 mr-1" /> Raw Material
             </Button>

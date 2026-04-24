@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.employee import Employee
 from app.models.task import ComplianceTask, Notification, Task, TaskComment
+from app.utils.notifications import send_whatsapp_message
 
 from .schema import (
     ComplianceTaskResponse,
@@ -122,6 +123,16 @@ async def create_task(
             message=f'{reporter_name} assigned you "{task.title}"',
             task_id=task.id,
         )
+        # WhatsApp alert to assignee
+        assignee_result = await db.execute(select(Employee).where(Employee.id == task.assigned_to_id))
+        assignee = assignee_result.scalar_one_or_none()
+        if assignee:
+            due_str = task.due_date.strftime("%d %b %Y") if task.due_date else "No due date"
+            await send_whatsapp_message(
+                assignee.phone,
+                f"Hi {assignee.name}, {reporter_name} assigned you a new task: '{task.title}'. Due: {due_str}.",
+                template_name="task_assigned",
+            )
 
     await db.refresh(task)
     result = await db.execute(_task_query().where(Task.id == task.id))
@@ -165,6 +176,16 @@ async def update_task(
             message=f'{reporter_name} assigned you "{task.title}"',
             task_id=task.id,
         )
+        # WhatsApp alert on reassignment
+        assignee_result = await db.execute(select(Employee).where(Employee.id == task.assigned_to_id))
+        assignee = assignee_result.scalar_one_or_none()
+        if assignee:
+            due_str = task.due_date.strftime("%d %b %Y") if task.due_date else "No due date"
+            await send_whatsapp_message(
+                assignee.phone,
+                f"Hi {assignee.name}, you have been assigned the task: '{task.title}'. Due: {due_str}.",
+                template_name="task_assigned",
+            )
 
     # notify reporter on status change
     if body.status and body.status != old_status and task.created_by_id and task.created_by_id != current_user_id:

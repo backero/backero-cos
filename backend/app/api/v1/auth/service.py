@@ -12,7 +12,7 @@ from app.core.security import (
     store_otp,
     verify_otp,
 )
-# from app.utils.notifications import send_otp_sms  # No SMS service for MVP
+from app.utils.notifications import send_otp_sms
 
 from .model import Employee
 
@@ -54,7 +54,7 @@ async def send_otp(db: AsyncSession, phone: str) -> str:
 
     otp = generate_otp()
     await store_otp(phone, otp)
-    # await send_otp_sms(phone, otp)  # No SMS service integrated — OTP returned in response for MVP
+    await send_otp_sms(phone, otp)
 
     print(f"\n{'='*40}\n[OTP] Phone: {phone}  OTP: {otp}\n{'='*40}\n")
     return otp

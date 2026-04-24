@@ -47,6 +47,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  useAttendance,
   useCheckIn,
   useCheckOut,
   useCreateDepartment,
@@ -54,8 +55,13 @@ import {
   useUpdateEmployee,
   useDepartments,
   useEmployees,
+  useExportEmployees,
+  useImportEmployees,
   useRoles,
 } from "@/hooks/use-queries";
+import { ImportExportMenu } from "@/components/ImportExportMenu";
+import { api } from "@/lib/api-client";
+import { format, getDaysInMonth, startOfMonth } from "date-fns";
 import { useAuthStore } from "@/stores/auth-store";
 import { useUIStore } from "@/stores/ui-store";
 import { cn, formatDate, getInitials } from "@/lib/utils";
@@ -110,6 +116,8 @@ export default function EmployeesPage() {
   const { data: roles = [] } = useRoles();
 
   const createEmployee = useCreateEmployee();
+  const exportEmployees = useExportEmployees();
+  const importEmployees = useImportEmployees();
 
   // Employee create form
   const empForm = useForm<EmployeeForm>({
@@ -159,8 +167,17 @@ export default function EmployeesPage() {
             </TabsTrigger>
           </TabsList>
 
-          <div className="flex gap-2">
-            <TabsContent value="employees" className="m-0">
+          <div className="flex gap-2 flex-wrap">
+            <TabsContent value="employees" className="m-0 flex gap-2">
+              <ImportExportMenu
+                onExport={() => exportEmployees.mutateAsync()}
+                onImport={(f) => importEmployees.mutateAsync(f)}
+                onSampleDownload={() => api.employees.sample()}
+                exportLabel="Export Employees"
+                importLabel="Import Employees"
+                isExporting={exportEmployees.isPending}
+                isImporting={importEmployees.isPending}
+              />
               {canCreateEmp && (
                 <Button size="sm" onClick={() => openModal("createEmployee")}>
                   <Plus className="w-4 h-4 mr-1.5" /> Add Employee
@@ -925,6 +942,87 @@ function CreateDepartmentDialog({
 
 // ── Employee Card ─────────────────────────────────────────────────────────────
 
+// ── Attendance Mini Calendar ──────────────────────────────────────────────────
+
+const ATT_STATUS_COLOR: Record<string, string> = {
+  present: "bg-green-500",
+  absent: "bg-red-400",
+  half_day: "bg-yellow-400",
+  wfh: "bg-blue-400",
+};
+
+function AttendanceCalendar({ employeeId }: { employeeId: string }) {
+  const now = new Date();
+  const [calMonth, setCalMonth] = useState(now.getMonth() + 1);
+  const [calYear, setCalYear] = useState(now.getFullYear());
+  const { data: records = [], isLoading } = useAttendance(employeeId, calMonth, calYear);
+
+  const daysInMonth = getDaysInMonth(new Date(calYear, calMonth - 1));
+  const firstDay = startOfMonth(new Date(calYear, calMonth - 1)).getDay();
+
+  const byDate: Record<string, string> = {};
+  records.forEach((r) => {
+    const d = typeof r.date === "string" ? r.date : format(new Date(r.date), "yyyy-MM-dd");
+    byDate[d] = r.status;
+  });
+
+  function prevMonth() {
+    if (calMonth === 1) { setCalMonth(12); setCalYear((y) => y - 1); }
+    else setCalMonth((m) => m - 1);
+  }
+  function nextMonth() {
+    if (calMonth === 12) { setCalMonth(1); setCalYear((y) => y + 1); }
+    else setCalMonth((m) => m + 1);
+  }
+
+  return (
+    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+      <div className="flex items-center justify-between mb-2">
+        <button onClick={prevMonth} className="text-slate-400 hover:text-slate-600 text-xs px-1">‹</button>
+        <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+          {format(new Date(calYear, calMonth - 1), "MMM yyyy")}
+        </span>
+        <button onClick={nextMonth} className="text-slate-400 hover:text-slate-600 text-xs px-1">›</button>
+      </div>
+      {isLoading ? (
+        <div className="h-16 flex items-center justify-center text-xs text-slate-400">Loading…</div>
+      ) : (
+        <div className="grid grid-cols-7 gap-0.5">
+          {["S","M","T","W","T","F","S"].map((d, i) => (
+            <div key={i} className="text-[9px] text-center text-slate-400 font-medium">{d}</div>
+          ))}
+          {Array.from({ length: firstDay }).map((_, i) => <div key={`e-${i}`} />)}
+          {Array.from({ length: daysInMonth }).map((_, i) => {
+            const day = i + 1;
+            const dateKey = `${calYear}-${String(calMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+            const status = byDate[dateKey];
+            const isToday = dateKey === format(now, "yyyy-MM-dd");
+            return (
+              <div key={day} className="flex items-center justify-center" title={status ?? ""}>
+                <div className={cn(
+                  "w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-medium",
+                  isToday && !status ? "ring-1 ring-primary text-primary" : "",
+                  status ? `${ATT_STATUS_COLOR[status]} text-white` : "text-slate-500",
+                )}>
+                  {day}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div className="flex gap-2 mt-2 flex-wrap">
+        {Object.entries(ATT_STATUS_COLOR).map(([s, c]) => (
+          <div key={s} className="flex items-center gap-1">
+            <div className={cn("w-2 h-2 rounded-full", c)} />
+            <span className="text-[9px] capitalize text-slate-400">{s.replace("_"," ")}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function EmployeeCard({
   employee,
   index,
@@ -950,6 +1048,7 @@ function EmployeeCard({
   checkInLoading: boolean;
   checkOutLoading: boolean;
 }) {
+  const [showCalendar, setShowCalendar] = useState(false);
   const roleColor = roles.find((r) => r.name === employee.role)?.color ?? "#64748b";
 
   return (
@@ -1059,6 +1158,16 @@ function EmployeeCard({
               </Button>
             </div>
           )}
+
+          {/* Attendance calendar toggle */}
+          <button
+            onClick={() => setShowCalendar((v) => !v)}
+            className="w-full mt-2 text-[10px] text-slate-400 hover:text-primary flex items-center gap-1 justify-center transition-colors"
+          >
+            <Calendar className="w-3 h-3" />
+            {showCalendar ? "Hide" : "View"} Attendance
+          </button>
+          {showCalendar && <AttendanceCalendar employeeId={String(employee.id)} />}
         </CardContent>
       </Card>
     </motion.div>

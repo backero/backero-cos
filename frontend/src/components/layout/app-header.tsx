@@ -1,14 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { AlertTriangle, Bell, BellOff, CheckCheck, ClipboardList, Menu, MessageSquare, RefreshCw } from "lucide-react";
+import { AlertTriangle, Bell, BellOff, CheckCheck, ClipboardList, Menu, MessageSquare, RefreshCw, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUIStore } from "@/stores/ui-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { useMarkAllNotificationsRead, useMarkNotificationRead, useNotifications, useUnreadCount } from "@/hooks/use-queries";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
+import { GlobalSearch } from "@/components/GlobalSearch";
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -88,7 +89,19 @@ export function AppHeader() {
   const { toggleSidebar } = useUIStore();
   const { user } = useAuthStore();
   const [showNotifs, setShowNotifs] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const { data: countData } = useUnreadCount();
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const unreadCount = countData?.count ?? 0;
 
   const title = PAGE_TITLES[pathname] ?? "Backero COS";
@@ -108,6 +121,18 @@ export function AppHeader() {
       </div>
 
       <div className="flex items-center gap-2">
+        <button
+          onClick={() => setSearchOpen(true)}
+          className="hidden sm:flex items-center gap-2 h-8 px-3 text-xs text-slate-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+        >
+          <Search className="w-3.5 h-3.5" />
+          <span>Search…</span>
+          <kbd className="ml-1 text-[10px] text-slate-400 font-mono">⌘K</kbd>
+        </button>
+        <Button variant="ghost" size="icon" className="sm:hidden" onClick={() => setSearchOpen(true)}>
+          <Search className="w-4 h-4" />
+        </Button>
+        <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
         <div className="relative">
           <Button
             variant="ghost"
