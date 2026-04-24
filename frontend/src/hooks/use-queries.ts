@@ -530,7 +530,7 @@ export function useImportRawMaterials() {
   });
 }
 export function useExportPlatformOrders() {
-  return useMutation({ mutationFn: (params?: { platform?: string }) => api.inventory.platformOrders.export(params), onError: (e) => handleApiError(e) });
+  return useMutation({ mutationFn: () => api.inventory.platformOrders.export(), onError: (e) => handleApiError(e) });
 }
 export function useImportPlatformOrders() {
   const qc = useQueryClient();
