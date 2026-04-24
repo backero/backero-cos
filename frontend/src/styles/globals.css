@@ -92,3 +92,89 @@
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-muted-foreground/30;
 }
+
+/* ── Premium card glow system ──────────────────────────────────────────────── */
+.card-premium {
+  box-shadow:
+    0 0 0 1px rgba(77, 135, 49, 0.1),
+    0 2px 6px rgba(0, 0, 0, 0.05),
+    0 4px 20px rgba(77, 135, 49, 0.05);
+  transition: box-shadow 0.25s ease;
+}
+.card-premium:hover {
+  box-shadow:
+    0 0 0 1px rgba(77, 135, 49, 0.18),
+    0 4px 14px rgba(0, 0, 0, 0.07),
+    0 8px 32px rgba(77, 135, 49, 0.09);
+}
+.dark .card-premium {
+  box-shadow:
+    0 0 0 1px rgba(77, 135, 49, 0.14),
+    0 2px 8px rgba(0, 0, 0, 0.3),
+    0 4px 24px rgba(77, 135, 49, 0.08),
+    0 0 40px rgba(212, 168, 83, 0.03);
+}
+.dark .card-premium:hover {
+  box-shadow:
+    0 0 0 1px rgba(77, 135, 49, 0.24),
+    0 4px 18px rgba(0, 0, 0, 0.4),
+    0 8px 40px rgba(77, 135, 49, 0.13),
+    0 0 55px rgba(212, 168, 83, 0.05);
+}
+
+.card-premium-red {
+  box-shadow:
+    0 0 0 1px rgba(239, 68, 68, 0.13),
+    0 2px 6px rgba(0, 0, 0, 0.05),
+    0 4px 20px rgba(239, 68, 68, 0.08);
+  transition: box-shadow 0.25s ease;
+}
+.dark .card-premium-red {
+  box-shadow:
+    0 0 0 1px rgba(239, 68, 68, 0.2),
+    0 2px 8px rgba(0, 0, 0, 0.3),
+    0 4px 28px rgba(239, 68, 68, 0.1);
+}
+
+.card-premium-orange {
+  box-shadow:
+    0 0 0 1px rgba(249, 115, 22, 0.13),
+    0 2px 6px rgba(0, 0, 0, 0.05),
+    0 4px 20px rgba(249, 115, 22, 0.08);
+  transition: box-shadow 0.25s ease;
+}
+.dark .card-premium-orange {
+  box-shadow:
+    0 0 0 1px rgba(249, 115, 22, 0.2),
+    0 2px 8px rgba(0, 0, 0, 0.3),
+    0 4px 28px rgba(249, 115, 22, 0.1);
+}
+
+.card-premium-blue {
+  box-shadow:
+    0 0 0 1px rgba(59, 130, 246, 0.13),
+    0 2px 6px rgba(0, 0, 0, 0.05),
+    0 4px 20px rgba(59, 130, 246, 0.08);
+  transition: box-shadow 0.25s ease;
+}
+.dark .card-premium-blue {
+  box-shadow:
+    0 0 0 1px rgba(59, 130, 246, 0.2),
+    0 2px 8px rgba(0, 0, 0, 0.3),
+    0 4px 28px rgba(59, 130, 246, 0.1);
+}
+
+.card-premium-green {
+  box-shadow:
+    0 0 0 1px rgba(34, 197, 94, 0.13),
+    0 2px 6px rgba(0, 0, 0, 0.05),
+    0 4px 20px rgba(34, 197, 94, 0.08);
+  transition: box-shadow 0.25s ease;
+}
+.dark .card-premium-green {
+  box-shadow:
+    0 0 0 1px rgba(34, 197, 94, 0.2),
+    0 2px 8px rgba(0, 0, 0, 0.3),
+    0 4px 28px rgba(34, 197, 94, 0.1);
+}
+

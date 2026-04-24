@@ -683,7 +683,7 @@ function RawMaterialRow({
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.04 }}
     >
-      <Card className={cn(material.is_low_stock && "border-orange-200 dark:border-orange-800")}>
+      <Card className={cn(material.is_low_stock && "card-premium-orange")}>
         <CardContent className="p-4">
           <div className="flex items-center gap-4">
             <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">

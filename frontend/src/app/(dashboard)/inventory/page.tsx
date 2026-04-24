@@ -656,7 +656,7 @@ function ProductCard({
       transition={{ delay: index * 0.06, duration: 0.35 }}
       whileHover={{ y: -2 }}
     >
-      <Card className={cn("overflow-hidden transition-shadow hover:shadow-md", isLow && "border-orange-200 dark:border-orange-800")}>
+      <Card className={cn("overflow-hidden", isLow && "card-premium-orange")}>
         <CardContent className="p-4 space-y-3">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">

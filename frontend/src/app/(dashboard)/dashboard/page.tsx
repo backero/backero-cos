@@ -51,9 +51,9 @@ function KPICard({
 }) {
   const router = useRouter();
   return (
-    <motion.div custom={index} initial="hidden" animate="visible" variants={fadeUp}>
+    <motion.div custom={index} initial="hidden" animate="visible" variants={fadeUp} className="h-full">
       <Card
-        className={cn("relative overflow-hidden transition-shadow", href && "cursor-pointer hover:shadow-md")}
+        className={cn("relative overflow-hidden h-full transition-shadow", href && "cursor-pointer")}
         onClick={() => href && router.push(href)}
       >
         <CardContent className="p-5">
@@ -87,7 +87,7 @@ function OverdueTasksWidget() {
   if (!tasks.length) return null;
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}>
-      <Card className="border-red-200 dark:border-red-900/50">
+      <Card className="card-premium-red">
         <CardHeader className="pb-2 pt-4 px-5">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold text-red-600 flex items-center gap-1.5">
@@ -119,7 +119,7 @@ function LowStockWidget() {
   if (!products.length) return null;
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
-      <Card className="border-orange-200 dark:border-orange-900/50">
+      <Card className="card-premium-orange">
         <CardHeader className="pb-2 pt-4 px-5">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold text-orange-600 flex items-center gap-1.5">
@@ -152,7 +152,7 @@ function PendingInvoicesWidget() {
   const total = invoices.reduce((s, i) => s + i.total, 0);
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.65 }}>
-      <Card className="border-blue-200 dark:border-blue-900/50">
+      <Card className="card-premium-blue">
         <CardHeader className="pb-2 pt-4 px-5">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold text-blue-600 flex items-center gap-1.5">
@@ -195,7 +195,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6 w-full flex-1">
       {/* KPI Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 items-stretch">
         <KPICard index={0} title="Revenue This Month" value={formatCurrency(kpis?.revenue_this_month ?? 0)}
           subtitle="Total income" icon={TrendingUp} color="bg-green-500" href="/finance" trend="up" />
         <KPICard index={1} title="Expenses" value={formatCurrency(kpis?.expenses_this_month ?? 0)}
