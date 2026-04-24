@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 interface ImportExportMenuProps {
   onExport: () => Promise<void> | void;
-  onImport: (file: File) => Promise<void> | void;
+  onImport: (file: File) => Promise<unknown> | void;
   onSampleDownload: () => Promise<void> | void;
   exportLabel?: string;
   importLabel?: string;
