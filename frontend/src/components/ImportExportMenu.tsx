@@ -6,9 +6,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface ImportExportMenuProps {
-  onExport: () => Promise<void> | void;
+  onExport: () => Promise<unknown> | void;
   onImport: (file: File) => Promise<unknown> | void;
-  onSampleDownload: () => Promise<void> | void;
+  onSampleDownload: () => Promise<unknown> | void;
   exportLabel?: string;
   importLabel?: string;
   accept?: string;
