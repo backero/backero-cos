@@ -101,6 +101,12 @@ class BatchResponse(BaseModel):
     created_at: datetime
 
 
+class PlatformOrderStatusUpdate(BaseModel):
+    status: str
+    tracking_number: Optional[str] = None
+    note: Optional[str] = None
+
+
 class PlatformOrderResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
@@ -111,3 +117,7 @@ class PlatformOrderResponse(BaseModel):
     amount: float
     status: str
     order_date: date
+    tracking_number: Optional[str] = None
+    status_history: Optional[list] = None
+    is_returned: bool = False
+    return_reason: Optional[str] = None

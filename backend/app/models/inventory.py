@@ -3,7 +3,7 @@ from datetime import date, datetime
 from typing import Optional
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.mixins import SoftDeleteMixin, TimestampMixin, UUIDMixin
@@ -92,5 +92,7 @@ class PlatformOrder(Base, UUIDMixin, TimestampMixin):
     amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending/shipped/delivered/returned/cancelled
     order_date: Mapped[date] = mapped_column(Date, nullable=False)
+    tracking_number: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    status_history: Mapped[Optional[list]] = mapped_column(JSON, nullable=True, default=list)
 
     product = relationship("Product", foreign_keys=[product_id])

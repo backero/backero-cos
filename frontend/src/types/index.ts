@@ -151,6 +151,38 @@ export interface Task {
   completion_note?: string | null;
   completion_submitted_at?: string | null;
   created_at: string;
+  // Kanban / dependencies
+  position?: number;
+  depends_on_task_id?: string | null;
+  // Recurrence
+  recurrence_type?: "daily" | "weekly" | "monthly" | null;
+  recurrence_day?: number | null;
+  recurrence_end_date?: string | null;
+  parent_task_id?: string | null;
+  // Derived
+  total_minutes?: number;
+  checklist_total?: number;
+  checklist_done?: number;
+}
+
+export interface ChecklistItem {
+  id: string;
+  task_id: string;
+  text: string;
+  is_done: boolean;
+  position: number;
+}
+
+export interface TimeLog {
+  id: string;
+  task_id: string;
+  employee_id?: string | null;
+  employee_name?: string | null;
+  started_at: string;
+  ended_at?: string | null;
+  minutes: number;
+  note?: string | null;
+  created_at: string;
 }
 
 export interface TaskComment {
@@ -310,6 +342,34 @@ export interface PlatformOrder {
   amount: number;
   status: "pending" | "shipped" | "delivered" | "returned" | "cancelled";
   order_date: string;
+  tracking_number?: string | null;
+  status_history?: Array<{ status: string; timestamp: string; note: string }> | null;
+  is_returned?: boolean;
+  return_reason?: string | null;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  gstin?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  created_at: string;
+}
+
+export interface AttendanceRegularization {
+  id: string;
+  employee_id: string;
+  date: string;
+  check_in_time?: string | null;
+  check_out_time?: string | null;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  reviewed_by_id?: string | null;
+  created_at: string;
 }
 
 export interface PlatformSummary {

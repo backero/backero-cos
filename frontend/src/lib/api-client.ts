@@ -17,9 +17,12 @@ import type {
   AccountEntry,
   ActivityLog,
   Attendance,
+  AttendanceRegularization,
   AuthUser,
   AuthResponse,
+  ChecklistItem,
   ComplianceTask,
+  Customer,
   DashboardKPIs,
   Department,
   Employee,
@@ -38,6 +41,7 @@ import type {
   Task,
   TaskAttachment,
   TaskComment,
+  TimeLog,
 } from "@/types";
 
 // Always use relative URLs — Next.js rewrites in next.config.ts proxy /api/v1/*
@@ -200,6 +204,20 @@ export const api = {
           body: JSON.stringify(data),
         }),
     },
+    regularizations: {
+      list: (params?: { employee_id?: string; status?: string }) =>
+        clientFetch<AttendanceRegularization[]>("/employees/regularizations", { params }),
+      create: (employee_id: string, data: { date: string; check_in_time?: string; check_out_time?: string; reason: string }) =>
+        clientFetch<AttendanceRegularization>(`/employees/${employee_id}/regularizations`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      review: (request_id: string, status: "approved" | "rejected") =>
+        clientFetch<AttendanceRegularization>(`/employees/regularizations/${request_id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status }),
+        }),
+    },
   },
 
   // Tasks
@@ -245,6 +263,39 @@ export const api = {
         clientFetch<TaskComment>(`/tasks/${taskId}/comments`, {
           method: "POST",
           body: JSON.stringify({ message }),
+        }),
+    },
+    move: (id: string, status: string, position: number) =>
+      clientFetch<Task>(`/tasks/${id}/move`, {
+        method: "PATCH",
+        body: JSON.stringify({ status, position }),
+      }),
+    requestExtension: (id: string, reason: string, days: number) =>
+      clientFetch<Task>(`/tasks/${id}/request-extension`, {
+        method: "POST",
+        body: JSON.stringify({ reason, days }),
+      }),
+    checklist: {
+      list: (taskId: string) => clientFetch<ChecklistItem[]>(`/tasks/${taskId}/checklist`),
+      add: (taskId: string, text: string) =>
+        clientFetch<ChecklistItem>(`/tasks/${taskId}/checklist`, {
+          method: "POST",
+          body: JSON.stringify({ text }),
+        }),
+      update: (taskId: string, itemId: string, data: { text?: string; is_done?: boolean }) =>
+        clientFetch<ChecklistItem>(`/tasks/${taskId}/checklist/${itemId}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      delete: (taskId: string, itemId: string) =>
+        clientFetch<{ message: string }>(`/tasks/${taskId}/checklist/${itemId}`, { method: "DELETE" }),
+    },
+    timeLogs: {
+      list: (taskId: string) => clientFetch<TimeLog[]>(`/tasks/${taskId}/time-logs`),
+      create: (taskId: string, data: { started_at: string; ended_at?: string; minutes?: number; note?: string }) =>
+        clientFetch<TimeLog>(`/tasks/${taskId}/time-logs`, {
+          method: "POST",
+          body: JSON.stringify(data),
         }),
     },
     attachments: {
@@ -325,6 +376,22 @@ export const api = {
     },
     summary: (params?: { from_date?: string; to_date?: string }) =>
       clientFetch<FinanceSummary>("/finance/summary", { params }),
+    customers: {
+      list: (params?: { search?: string; page?: number; limit?: number }) =>
+        clientFetch<PaginatedResponse<Customer>>("/finance/customers/", { params }),
+      create: (data: { name: string; phone?: string; email?: string; gstin?: string; address?: string; city?: string; state?: string }) =>
+        clientFetch<Customer>("/finance/customers/", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      update: (id: string, data: Partial<{ name: string; phone: string; email: string; gstin: string; address: string; city: string; state: string }>) =>
+        clientFetch<Customer>(`/finance/customers/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      delete: (id: string) =>
+        clientFetch<{ message: string }>(`/finance/customers/${id}`, { method: "DELETE" }),
+    },
   },
 
   // Inventory
@@ -428,7 +495,14 @@ export const api = {
           method: "POST",
           body: JSON.stringify(data),
         }),
+      updateStatus: (id: string, status: string, tracking_number?: string, note?: string) =>
+        clientFetch<PlatformOrder>(`/inventory/platform-orders/${id}/status`, {
+          method: "PATCH",
+          body: JSON.stringify({ status, tracking_number, note }),
+        }),
     },
+    returnsAnalysis: () =>
+      clientFetch<{ by_platform: unknown[]; by_product: unknown[] }>("/inventory/returns-analysis"),
     platformSummary: (order_date?: string) =>
       clientFetch<PlatformSummary[]>("/inventory/platform-summary", {
         params: { order_date },
@@ -518,6 +592,48 @@ export const api = {
       const { toast } = await import("sonner");
       toast.error(e instanceof Error ? e.message : "Failed to download invoice");
     }
+  },
+
+  // Reports
+  reports: {
+    attendance: (month: number, year: number, format: "json" | "excel" = "json") =>
+      clientFetch<{ month: number; year: number; rows: unknown[] }>("/reports/attendance", {
+        params: { month, year, format },
+      }),
+    gst: (month: number, year: number, format: "json" | "excel" = "json") =>
+      clientFetch<{ month: number; year: number; rows: unknown[]; totals: unknown }>("/reports/gst", {
+        params: { month, year, format },
+      }),
+    pl: (month: number, year: number, format: "json" | "excel" = "json") =>
+      clientFetch<{ month: number; year: number; income: unknown[]; expense: unknown[]; total_income: number; total_expense: number; net: number }>("/reports/pl", {
+        params: { month, year, format },
+      }),
+    tasks: (month: number, year: number, format: "json" | "excel" = "json") =>
+      clientFetch<{ month: number; year: number; rows: unknown[] }>("/reports/tasks", {
+        params: { month, year, format },
+      }),
+    downloadExcel: async (reportType: "attendance" | "gst" | "pl" | "tasks", month: number, year: number) => {
+      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+      const url = `${API_BASE}/api/v1/reports/${reportType}?month=${month}&year=${year}&format=excel`;
+      const r = await fetch(url, {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!r.ok) throw new Error("Download failed");
+      const blob = await r.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${reportType}_${year}_${String(month).padStart(2, "0")}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    },
+  },
+
+  // Admin
+  admin: {
+    health: () => clientFetch<Record<string, unknown>>("/admin/health"),
   },
 
   // Roles & Permissions

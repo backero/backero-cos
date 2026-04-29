@@ -10,6 +10,10 @@ from .schema import ProfileUpdate, RefreshRequest, SendOTPRequest, VerifyOTPRequ
 
 
 async def send_otp(body: SendOTPRequest, db: AsyncSession = Depends(get_db)):
+    from fastapi import HTTPException
+    from app.core.security import check_otp_rate_limit
+    if not check_otp_rate_limit(body.phone):
+        raise HTTPException(status_code=429, detail="Too many OTP requests. Try again in 10 minutes.")
     otp = await service.send_otp(db, body.phone)
     return {"message": "OTP sent successfully", "otp": otp}
 

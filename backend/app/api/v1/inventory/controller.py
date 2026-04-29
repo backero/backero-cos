@@ -14,6 +14,7 @@ from .schema import (
     BatchResponse,
     PlatformOrderCreate,
     PlatformOrderResponse,
+    PlatformOrderStatusUpdate,
     ProductCreate,
     ProductResponse,
     RawMaterialCreate,
@@ -136,6 +137,22 @@ async def platform_summary(
     current_user: CurrentUser = None,
 ):
     return await service.platform_summary(db, order_date)
+
+
+async def update_order_status(
+    order_id: str,
+    body: PlatformOrderStatusUpdate,
+    current_user: ManagerUser = None,
+    db: AsyncSession = Depends(get_db),
+) -> PlatformOrderResponse:
+    return await service.update_order_status(db, order_id, body)
+
+
+async def returns_analysis(
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = None,
+):
+    return await service.returns_analysis(db)
 
 
 async def get_import_template(current_user: CurrentUser = None):

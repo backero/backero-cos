@@ -22,6 +22,8 @@ interface SearchResult {
   label: string;
   sub: string;
   href: string;
+
+  
   icon: React.ReactNode;
 }
 

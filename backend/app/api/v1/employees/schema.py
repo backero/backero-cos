@@ -68,3 +68,27 @@ class AttendanceResponse(BaseModel):
     check_out: Optional[datetime] = None
     status: str
     notes: Optional[str] = None
+
+
+class RegularizationCreate(BaseModel):
+    date: date
+    check_in_time: Optional[str] = None
+    check_out_time: Optional[str] = None
+    reason: str
+
+
+class RegularizationReview(BaseModel):
+    status: str
+
+
+class RegularizationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    employee_id: UUID
+    date: date
+    check_in_time: Optional[str] = None
+    check_out_time: Optional[str] = None
+    reason: str
+    status: str
+    reviewed_by_id: Optional[UUID] = None
+    created_at: datetime

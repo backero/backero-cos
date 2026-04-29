@@ -18,6 +18,9 @@ from .schema import (
     EmployeeCreate,
     EmployeeResponse,
     EmployeeUpdate,
+    RegularizationCreate,
+    RegularizationResponse,
+    RegularizationReview,
 )
 
 _XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -109,6 +112,33 @@ async def get_attendance(
     current_user: CurrentUser = None,
 ) -> list[AttendanceResponse]:
     return await service.get_attendance(db, employee_id, month, year)
+
+
+async def create_regularization(
+    employee_id: str,
+    body: RegularizationCreate,
+    current_user: CurrentUser = None,
+    db: AsyncSession = Depends(get_db),
+) -> RegularizationResponse:
+    return await service.create_regularization(db, employee_id, body)
+
+
+async def list_regularizations(
+    employee_id: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = None,
+) -> list[RegularizationResponse]:
+    return await service.list_regularizations(db, employee_id, status)
+
+
+async def review_regularization(
+    request_id: str,
+    body: RegularizationReview,
+    current_user: AdminUser = None,
+    db: AsyncSession = Depends(get_db),
+) -> RegularizationResponse:
+    return await service.review_regularization(db, request_id, body, current_user.id)
 
 
 # ── Import / Export ───────────────────────────────────────────────────────────

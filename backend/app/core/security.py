@@ -13,6 +13,11 @@ from app.core.config import settings
 _redis: Optional[aioredis.Redis] = None
 _mem_store: dict[str, tuple[str, float]] = {}
 
+# key -> (count, window_start)
+_otp_rate_store: dict[str, tuple[int, float]] = {}
+OTP_RATE_LIMIT = 3
+OTP_RATE_WINDOW = 600  # 10 minutes
+
 
 def _get_redis() -> aioredis.Redis:
     global _redis
@@ -63,6 +68,24 @@ def generate_otp(length: int = 6) -> str:
 
 
 # ── OTP store ─────────────────────────────────────────────────────────────────
+
+def check_otp_rate_limit(phone: str) -> bool:
+    """Return True if allowed, False if rate limit exceeded (3 per 10 min)."""
+    now = time.time()
+    key = f"rate:{phone}"
+    entry = _otp_rate_store.get(key)
+    if entry:
+        count, window_start = entry
+        if now - window_start < OTP_RATE_WINDOW:
+            if count >= OTP_RATE_LIMIT:
+                return False
+            _otp_rate_store[key] = (count + 1, window_start)
+        else:
+            _otp_rate_store[key] = (1, now)
+    else:
+        _otp_rate_store[key] = (1, now)
+    return True
+
 
 async def store_otp(phone: str, otp: str, ttl: int = 300) -> None:
     try:

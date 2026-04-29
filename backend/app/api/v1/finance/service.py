@@ -330,7 +330,7 @@ async def generate_invoice_pdf(db: AsyncSession, invoice_id: str):
          Paragraph("Branch: Coimbatore", value_style)],
         [Paragraph("For Backero Private Limited", ParagraphStyle("sigco", parent=styles["Normal"], fontSize=9, textColor=navy, alignment=TA_RIGHT, fontName="Helvetica-Bold")),
          Spacer(1, 14*mm),
-         HRFlowable(width="50mm", thickness=0.5, color=navy),
+         HRFlowable(width=50*mm, thickness=0.5, color=navy),
          Paragraph("Authorised Signatory", ParagraphStyle("signame", parent=styles["Normal"], fontSize=8, textColor=colors.HexColor("#64748B"), alignment=TA_RIGHT))],
     ]]
     sig_table = Table(sig_data, colWidths=[100*mm, 80*mm])

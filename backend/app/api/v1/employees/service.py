@@ -247,3 +247,47 @@ async def get_attendance(
     query = query.order_by(Attendance.date.desc())
     result = await db.execute(query)
     return [_attendance_response(a) for a in result.scalars()]
+
+
+async def create_regularization(db: AsyncSession, employee_id: str, body) -> dict:
+    from app.models.employee import AttendanceRegularization
+    from .schema import RegularizationResponse
+    reg = AttendanceRegularization(
+        employee_id=uuid.UUID(employee_id),
+        date=body.date,
+        check_in_time=body.check_in_time,
+        check_out_time=body.check_out_time,
+        reason=body.reason,
+        status="pending",
+    )
+    db.add(reg)
+    await db.flush()
+    return RegularizationResponse.model_validate(reg)
+
+
+async def list_regularizations(db: AsyncSession, employee_id: Optional[str] = None, status: Optional[str] = None) -> list:
+    from app.models.employee import AttendanceRegularization
+    from .schema import RegularizationResponse
+    query = select(AttendanceRegularization)
+    if employee_id:
+        query = query.where(AttendanceRegularization.employee_id == uuid.UUID(employee_id))
+    if status:
+        query = query.where(AttendanceRegularization.status == status)
+    query = query.order_by(AttendanceRegularization.created_at.desc())
+    result = await db.execute(query)
+    return [RegularizationResponse.model_validate(r) for r in result.scalars()]
+
+
+async def review_regularization(db: AsyncSession, request_id: str, body, reviewer_id) -> dict:
+    from app.models.employee import AttendanceRegularization
+    from .schema import RegularizationResponse
+    result = await db.execute(
+        select(AttendanceRegularization).where(AttendanceRegularization.id == uuid.UUID(request_id))
+    )
+    reg = result.scalar_one_or_none()
+    if not reg:
+        raise HTTPException(status_code=404, detail="Regularization request not found")
+    reg.status = body.status
+    reg.reviewed_by_id = reviewer_id
+    await db.flush()
+    return RegularizationResponse.model_validate(reg)

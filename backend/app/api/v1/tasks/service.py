@@ -17,17 +17,23 @@ from app.utils.notifications import (
     build_task_rejected_message,
 )
 from .model import ComplianceTask, Task
-from app.models.task import TaskComment
+from app.models.task import TaskChecklistItem, TaskComment, TaskTimeLog
 from .schema import (
+    ChecklistItemCreate,
+    ChecklistItemResponse,
+    ChecklistItemUpdate,
     CompletionSubmit,
     ComplianceTaskResponse,
     ExtensionRequest,
     TaskCommentCreate,
     TaskCommentResponse,
     TaskCreate,
+    TaskMoveBody,
     TaskReject,
     TaskResponse,
     TaskUpdate,
+    TimeLogCreate,
+    TimeLogResponse,
 )
 
 
@@ -91,6 +97,10 @@ async def create_task(
         department_id=uuid.UUID(body.department_id) if body.department_id else None,
         created_by_id=created_by_id,
         status="pending",
+        depends_on_task_id=uuid.UUID(body.depends_on_task_id) if body.depends_on_task_id else None,
+        recurrence_type=body.recurrence_type or "none",
+        recurrence_day=body.recurrence_day,
+        recurrence_end_date=body.recurrence_end_date,
     )
     db.add(task)
     await db.flush()
@@ -257,6 +267,17 @@ async def submit_completion(
     if task.assigned_to_id != current_user_id:
         raise HTTPException(status_code=403, detail="Only the assigned employee can submit completion")
 
+    # Enforce checklist completion
+    checklist_result = await db.execute(
+        select(TaskChecklistItem).where(
+            TaskChecklistItem.task_id == uuid.UUID(task_id),
+            TaskChecklistItem.is_done == False,
+        )
+    )
+    pending_items = checklist_result.scalars().all()
+    if pending_items:
+        raise HTTPException(status_code=400, detail=f"Complete all {len(pending_items)} checklist item(s) before submitting")
+
     task.status = "pending_approval"
     task.completion_note = body.note
     task.completion_submitted_at = datetime.now(timezone.utc)
@@ -306,6 +327,7 @@ async def approve_task(
     task.status = "completed"
     task.completed_at = datetime.now(timezone.utc)
     await db.flush()
+    await _spawn_recurring_task(db, task)
 
     if task.assigned_to_id:
         emp = await _get_employee(db, task.assigned_to_id)
@@ -389,6 +411,173 @@ async def delete_task(db: AsyncSession, task_id: str, actor_id: uuid.UUID | None
 async def list_compliance_tasks(db: AsyncSession) -> list[ComplianceTaskResponse]:
     result = await db.execute(select(ComplianceTask).order_by(ComplianceTask.due_date.asc()))
     return [ComplianceTaskResponse.model_validate(t) for t in result.scalars()]
+
+
+# ── Kanban move ───────────────────────────────────────────────────────────────
+
+async def move_task(
+    db: AsyncSession,
+    task_id: str,
+    body: TaskMoveBody,
+    current_user_id: uuid.UUID,
+    current_user_role: str,
+) -> TaskResponse:
+    result = await db.execute(select(Task).where(Task.id == uuid.UUID(task_id)))
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    role_lower = current_user_role.lower()
+    is_manager_or_above = "manager" in role_lower or "admin" in role_lower
+    if not is_manager_or_above and task.assigned_to_id != current_user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Dependency check: can't move to in_progress if blocker not completed
+    if body.status == "in_progress" and task.depends_on_task_id:
+        dep_result = await db.execute(select(Task).where(Task.id == task.depends_on_task_id))
+        dep = dep_result.scalar_one_or_none()
+        if dep and dep.status != "completed":
+            raise HTTPException(status_code=400, detail=f"Dependency task '{dep.title}' must be completed first")
+
+    task.status = body.status
+    task.position = body.position
+    await db.refresh(task, ["assigned_to", "department", "created_by"])
+    return TaskResponse.model_validate(task)
+
+
+# ── Recurring task helper ─────────────────────────────────────────────────────
+
+async def _spawn_recurring_task(db: AsyncSession, source: Task) -> None:
+    from datetime import timedelta
+    if source.recurrence_type == "none" or not source.recurrence_type:
+        return
+    now = datetime.now(timezone.utc)
+    if source.recurrence_end_date and now > source.recurrence_end_date:
+        return
+
+    next_due = source.due_date
+    if next_due:
+        if source.recurrence_type == "daily":
+            next_due = next_due + timedelta(days=1)
+        elif source.recurrence_type == "weekly":
+            next_due = next_due + timedelta(weeks=1)
+        elif source.recurrence_type == "monthly":
+            import calendar
+            month = next_due.month % 12 + 1
+            year = next_due.year + (1 if next_due.month == 12 else 0)
+            day = min(next_due.day, calendar.monthrange(year, month)[1])
+            next_due = next_due.replace(year=year, month=month, day=day)
+
+    new_task = Task(
+        title=source.title,
+        description=source.description,
+        priority=source.priority,
+        assigned_to_id=source.assigned_to_id,
+        department_id=source.department_id,
+        created_by_id=source.created_by_id,
+        status="pending",
+        due_date=next_due,
+        recurrence_type=source.recurrence_type,
+        recurrence_day=source.recurrence_day,
+        recurrence_end_date=source.recurrence_end_date,
+        parent_task_id=source.id,
+    )
+    db.add(new_task)
+    await db.flush()
+
+
+# ── Checklist ─────────────────────────────────────────────────────────────────
+
+async def list_checklist(db: AsyncSession, task_id: str) -> list[ChecklistItemResponse]:
+    result = await db.execute(
+        select(TaskChecklistItem)
+        .where(TaskChecklistItem.task_id == uuid.UUID(task_id))
+        .order_by(TaskChecklistItem.position.asc())
+    )
+    return [ChecklistItemResponse.model_validate(i) for i in result.scalars()]
+
+
+async def add_checklist_item(
+    db: AsyncSession, task_id: str, body: ChecklistItemCreate
+) -> ChecklistItemResponse:
+    item = TaskChecklistItem(
+        task_id=uuid.UUID(task_id),
+        text=body.text,
+        position=body.position,
+        is_done=False,
+    )
+    db.add(item)
+    await db.flush()
+    await db.refresh(item)
+    return ChecklistItemResponse.model_validate(item)
+
+
+async def update_checklist_item(
+    db: AsyncSession, task_id: str, item_id: str, body: ChecklistItemUpdate
+) -> ChecklistItemResponse:
+    result = await db.execute(
+        select(TaskChecklistItem).where(
+            TaskChecklistItem.id == uuid.UUID(item_id),
+            TaskChecklistItem.task_id == uuid.UUID(task_id),
+        )
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Checklist item not found")
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(item, field, value)
+    await db.flush()
+    await db.refresh(item)
+    return ChecklistItemResponse.model_validate(item)
+
+
+async def delete_checklist_item(db: AsyncSession, task_id: str, item_id: str) -> None:
+    result = await db.execute(
+        select(TaskChecklistItem).where(
+            TaskChecklistItem.id == uuid.UUID(item_id),
+            TaskChecklistItem.task_id == uuid.UUID(task_id),
+        )
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Checklist item not found")
+    await db.delete(item)
+
+
+# ── Time Logs ─────────────────────────────────────────────────────────────────
+
+async def create_time_log(
+    db: AsyncSession, task_id: str, body: TimeLogCreate, employee_id: uuid.UUID
+) -> TimeLogResponse:
+    from sqlalchemy.orm import selectinload as sil
+    minutes = body.minutes
+    if minutes is None and body.started_at and body.ended_at:
+        delta = body.ended_at - body.started_at
+        minutes = max(0, int(delta.total_seconds() / 60))
+
+    log = TaskTimeLog(
+        task_id=uuid.UUID(task_id),
+        employee_id=employee_id,
+        started_at=body.started_at,
+        ended_at=body.ended_at,
+        minutes=minutes,
+        note=body.note,
+    )
+    db.add(log)
+    await db.flush()
+    await db.refresh(log, ["employee"])
+    return TimeLogResponse.model_validate(log)
+
+
+async def list_time_logs(db: AsyncSession, task_id: str) -> list[TimeLogResponse]:
+    from sqlalchemy.orm import selectinload as sil
+    result = await db.execute(
+        select(TaskTimeLog)
+        .options(sil(TaskTimeLog.employee))
+        .where(TaskTimeLog.task_id == uuid.UUID(task_id))
+        .order_by(TaskTimeLog.started_at.desc())
+    )
+    return [TimeLogResponse.model_validate(l) for l in result.scalars()]
 
 
 async def add_comment(

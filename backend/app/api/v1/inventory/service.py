@@ -321,6 +321,77 @@ async def create_platform_order(db: AsyncSession, body: PlatformOrderCreate) -> 
     return PlatformOrderResponse.model_validate(order)
 
 
+async def update_order_status(
+    db: AsyncSession,
+    order_id: str,
+    body,
+) -> PlatformOrderResponse:
+    from datetime import datetime, timezone
+    result = await db.execute(select(PlatformOrder).where(PlatformOrder.id == uuid.UUID(order_id)))
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    history = list(order.status_history or [])
+    history.append({
+        "status": body.status,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "note": body.note or "",
+    })
+    order.status = body.status
+    order.status_history = history
+    if body.tracking_number is not None:
+        order.tracking_number = body.tracking_number
+    if body.status == "returned":
+        order.is_returned = True
+        order.return_reason = body.note
+
+    await db.flush()
+    return PlatformOrderResponse.model_validate(order)
+
+
+async def returns_analysis(db: AsyncSession) -> dict:
+    result = await db.execute(select(PlatformOrder))
+    orders = result.scalars().all()
+
+    by_platform: dict[str, dict] = {}
+    by_product: dict[str, dict] = {}
+
+    for o in orders:
+        p = o.platform
+        prod = o.product_name
+        by_platform.setdefault(p, {"total": 0, "returned": 0})
+        by_product.setdefault(prod, {"total": 0, "returned": 0})
+
+        by_platform[p]["total"] += 1
+        by_product[prod]["total"] += 1
+
+        if o.is_returned or o.status == "returned":
+            by_platform[p]["returned"] += 1
+            by_product[prod]["returned"] += 1
+
+    platform_rows = [
+        {
+            "platform": k,
+            "total_orders": v["total"],
+            "returns": v["returned"],
+            "return_rate": round(v["returned"] / v["total"] * 100, 1) if v["total"] else 0,
+        }
+        for k, v in sorted(by_platform.items())
+    ]
+    product_rows = [
+        {
+            "product": k,
+            "total_orders": v["total"],
+            "returns": v["returned"],
+            "return_rate": round(v["returned"] / v["total"] * 100, 1) if v["total"] else 0,
+        }
+        for k, v in sorted(by_product.items(), key=lambda x: -x[1]["returned"])
+    ]
+
+    return {"by_platform": platform_rows, "by_product": product_rows}
+
+
 async def platform_summary(
     db: AsyncSession, order_date: Optional[date] = None
 ) -> list[dict]:

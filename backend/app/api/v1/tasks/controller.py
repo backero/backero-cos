@@ -9,6 +9,9 @@ from app.db.session import get_db
 
 from . import service
 from .schema import (
+    ChecklistItemCreate,
+    ChecklistItemResponse,
+    ChecklistItemUpdate,
     CompletionSubmit,
     ComplianceTaskResponse,
     ExtensionRequest,
@@ -16,9 +19,12 @@ from .schema import (
     TaskCommentCreate,
     TaskCommentResponse,
     TaskCreate,
+    TaskMoveBody,
     TaskReject,
     TaskResponse,
     TaskUpdate,
+    TimeLogCreate,
+    TimeLogResponse,
 )
 
 
@@ -155,3 +161,66 @@ async def download_attachment(
     db: AsyncSession = Depends(get_db),
 ):
     return await service.download_attachment(db, task_id, attachment_id)
+
+
+async def move_task(
+    task_id: str,
+    body: TaskMoveBody,
+    current_user: CurrentUser = None,
+    db: AsyncSession = Depends(get_db),
+) -> TaskResponse:
+    return await service.move_task(db, task_id, body, current_user.id, current_user.role)
+
+
+async def list_checklist(
+    task_id: str,
+    current_user: CurrentUser = None,
+    db: AsyncSession = Depends(get_db),
+) -> list[ChecklistItemResponse]:
+    return await service.list_checklist(db, task_id)
+
+
+async def add_checklist_item(
+    task_id: str,
+    body: ChecklistItemCreate,
+    current_user: CurrentUser = None,
+    db: AsyncSession = Depends(get_db),
+) -> ChecklistItemResponse:
+    return await service.add_checklist_item(db, task_id, body)
+
+
+async def update_checklist_item(
+    task_id: str,
+    item_id: str,
+    body: ChecklistItemUpdate,
+    current_user: CurrentUser = None,
+    db: AsyncSession = Depends(get_db),
+) -> ChecklistItemResponse:
+    return await service.update_checklist_item(db, task_id, item_id, body)
+
+
+async def delete_checklist_item(
+    task_id: str,
+    item_id: str,
+    current_user: CurrentUser = None,
+    db: AsyncSession = Depends(get_db),
+):
+    await service.delete_checklist_item(db, task_id, item_id)
+    return {"message": "Item deleted"}
+
+
+async def create_time_log(
+    task_id: str,
+    body: TimeLogCreate,
+    current_user: CurrentUser = None,
+    db: AsyncSession = Depends(get_db),
+) -> TimeLogResponse:
+    return await service.create_time_log(db, task_id, body, current_user.id)
+
+
+async def list_time_logs(
+    task_id: str,
+    current_user: CurrentUser = None,
+    db: AsyncSession = Depends(get_db),
+) -> list[TimeLogResponse]:
+    return await service.list_time_logs(db, task_id)

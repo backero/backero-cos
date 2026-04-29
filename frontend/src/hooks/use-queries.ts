@@ -547,3 +547,195 @@ export function useMonthlyTrend() {
     queryFn: () => api.dashboard.monthlyTrend(),
   });
 }
+
+// ── Customers ────────────────────────────────────────────────────────────────
+export function useCustomers(params?: { search?: string; page?: number; limit?: number }) {
+  return useQuery({
+    queryKey: ["customers", params],
+    queryFn: () => api.finance.customers.list(params),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useCreateCustomer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Parameters<typeof api.finance.customers.create>[0]) =>
+      api.finance.customers.create(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      toast.success("Customer created");
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+
+export function useUpdateCustomer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof api.finance.customers.update>[1] }) =>
+      api.finance.customers.update(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      toast.success("Customer updated");
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+
+export function useDeleteCustomer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.finance.customers.delete(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      toast.success("Customer deleted");
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+
+// ── Task Checklist ────────────────────────────────────────────────────────────
+export function useTaskChecklist(taskId: string | null) {
+  return useQuery({
+    queryKey: ["task-checklist", taskId],
+    queryFn: () => api.tasks.checklist.list(taskId!),
+    enabled: !!taskId,
+  });
+}
+
+export function useAddChecklistItem(taskId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (text: string) => api.tasks.checklist.add(taskId!, text),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["task-checklist", taskId] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+
+export function useUpdateChecklistItem(taskId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, data }: { itemId: string; data: { text?: string; is_done?: boolean } }) =>
+      api.tasks.checklist.update(taskId!, itemId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["task-checklist", taskId] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+
+export function useDeleteChecklistItem(taskId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (itemId: string) => api.tasks.checklist.delete(taskId!, itemId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["task-checklist", taskId] });
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+
+// ── Time Logs ────────────────────────────────────────────────────────────────
+export function useTimeLogs(taskId: string | null) {
+  return useQuery({
+    queryKey: ["task-time-logs", taskId],
+    queryFn: () => api.tasks.timeLogs.list(taskId!),
+    enabled: !!taskId,
+  });
+}
+
+export function useCreateTimeLog(taskId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Parameters<typeof api.tasks.timeLogs.create>[1]) =>
+      api.tasks.timeLogs.create(taskId!, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["task-time-logs", taskId] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      toast.success("Time logged");
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+
+// ── Move Task ────────────────────────────────────────────────────────────────
+export function useMoveTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status, position }: { id: string; status: string; position: number }) =>
+      api.tasks.move(id, status, position),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+
+// ── Order Status Update ──────────────────────────────────────────────────────
+export function useUpdateOrderStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status, tracking_number, note }: { id: string; status: string; tracking_number?: string; note?: string }) =>
+      api.inventory.platformOrders.updateStatus(id, status, tracking_number, note),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["platform-orders"] });
+      toast.success("Order status updated");
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+
+export function useReturnsAnalysis() {
+  return useQuery({
+    queryKey: ["returns-analysis"],
+    queryFn: () => api.inventory.returnsAnalysis(),
+  });
+}
+
+// ── Regularizations ──────────────────────────────────────────────────────────
+export function useRegularizations(params?: { employee_id?: string; status?: string }) {
+  return useQuery({
+    queryKey: ["regularizations", params],
+    queryFn: () => api.employees.regularizations.list(params),
+  });
+}
+
+export function useCreateRegularization() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ employee_id, data }: { employee_id: string; data: Parameters<typeof api.employees.regularizations.create>[1] }) =>
+      api.employees.regularizations.create(employee_id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["regularizations"] });
+      toast.success("Regularization request submitted");
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+
+export function useReviewRegularization() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ request_id, status }: { request_id: string; status: "approved" | "rejected" }) =>
+      api.employees.regularizations.review(request_id, status),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["regularizations"] });
+      toast.success("Regularization reviewed");
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+
+// ── Admin Health ──────────────────────────────────────────────────────────────
+export function useAdminHealth() {
+  return useQuery({
+    queryKey: ["admin-health"],
+    queryFn: () => api.admin.health(),
+    refetchInterval: 60 * 1000,
+  });
+}

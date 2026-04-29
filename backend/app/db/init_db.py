@@ -60,6 +60,114 @@ async def migrate_columns() -> None:
         """))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_task_attachments_task_id ON task_attachments(task_id)"))
 
+        # ── Task enhancements ────────────────────────────────────────────────
+        await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS position INTEGER NOT NULL DEFAULT 0"))
+        await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS depends_on_task_id UUID REFERENCES tasks(id) ON DELETE SET NULL"))
+        await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurrence_type VARCHAR(20) NOT NULL DEFAULT 'none'"))
+        await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurrence_day INTEGER"))
+        await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurrence_end_date TIMESTAMPTZ"))
+        await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS parent_task_id UUID REFERENCES tasks(id) ON DELETE SET NULL"))
+
+        # ── Task checklist items ─────────────────────────────────────────────
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS task_checklist_items (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                text VARCHAR(500) NOT NULL,
+                is_done BOOLEAN NOT NULL DEFAULT FALSE,
+                position INTEGER NOT NULL DEFAULT 0
+            )
+        """))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_task_checklist_items_task_id ON task_checklist_items(task_id)"))
+
+        # ── Task time logs ───────────────────────────────────────────────────
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS task_time_logs (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+                started_at TIMESTAMPTZ NOT NULL,
+                ended_at TIMESTAMPTZ,
+                minutes INTEGER,
+                note TEXT
+            )
+        """))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_task_time_logs_task_id ON task_time_logs(task_id)"))
+
+        # ── Customers ────────────────────────────────────────────────────────
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS customers (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+                name VARCHAR(200) NOT NULL,
+                phone VARCHAR(20),
+                email VARCHAR(255),
+                gstin VARCHAR(20),
+                address TEXT,
+                city VARCHAR(100),
+                state VARCHAR(100)
+            )
+        """))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_customers_phone ON customers(phone)"))
+        await conn.execute(text("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_id UUID REFERENCES customers(id) ON DELETE SET NULL"))
+
+        # ── Platform order enhancements ──────────────────────────────────────
+        await conn.execute(text("ALTER TABLE platform_orders ADD COLUMN IF NOT EXISTS tracking_number VARCHAR(100)"))
+        await conn.execute(text("ALTER TABLE platform_orders ADD COLUMN IF NOT EXISTS status_history JSONB"))
+
+        # ── Attendance regularizations ───────────────────────────────────────
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS attendance_regularizations (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                employee_id UUID NOT NULL REFERENCES employees(id),
+                date DATE NOT NULL,
+                check_in_time TIMESTAMPTZ,
+                check_out_time TIMESTAMPTZ,
+                reason TEXT NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                reviewed_by_id UUID REFERENCES employees(id) ON DELETE SET NULL
+            )
+        """))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_attendance_reg_employee ON attendance_regularizations(employee_id)"))
+
+        # ── Activity log archive ─────────────────────────────────────────────
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS activity_log_archives (
+                id UUID PRIMARY KEY,
+                created_at TIMESTAMPTZ NOT NULL,
+                archived_at TIMESTAMPTZ DEFAULT NOW(),
+                actor_id UUID,
+                actor_name VARCHAR(200) NOT NULL DEFAULT 'System',
+                action VARCHAR(50) NOT NULL,
+                entity_type VARCHAR(50) NOT NULL,
+                entity_id VARCHAR(100),
+                entity_name VARCHAR(300),
+                description TEXT NOT NULL,
+                deleted_data JSONB,
+                is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+            )
+        """))
+
+        # ── System counters ──────────────────────────────────────────────────
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS system_counters (
+                key VARCHAR(100) PRIMARY KEY,
+                value INTEGER NOT NULL DEFAULT 0
+            )
+        """))
+        await conn.execute(text("""
+            INSERT INTO system_counters (key, value) VALUES ('failed_wa_count', 0)
+            ON CONFLICT (key) DO NOTHING
+        """))
+
 
 async def seed_super_admin() -> None:
     """Ensure the bootstrap employee exists with the Super Admin role."""

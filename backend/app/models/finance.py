@@ -10,6 +10,18 @@ from app.db.mixins import SoftDeleteMixin, TimestampMixin, UUIDMixin
 from app.db.session import Base
 
 
+class Customer(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
+    __tablename__ = "customers"
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    gstin: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    state: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+
 class Invoice(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     __table_args__ = (
         Index("ix_invoices_status_date", "status", "invoice_date"),
@@ -39,12 +51,16 @@ class Invoice(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)  # pending/paid/overdue/cancelled
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("employees.id"), nullable=True
     )
 
     items: Mapped[list["InvoiceItem"]] = relationship("InvoiceItem", back_populates="invoice", cascade="all, delete-orphan")
     created_by = relationship("Employee", foreign_keys=[created_by_id])
+    customer = relationship("Customer", foreign_keys=[customer_id])
 
 
 class InvoiceItem(Base, UUIDMixin, TimestampMixin):

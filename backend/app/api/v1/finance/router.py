@@ -3,9 +3,11 @@ from fastapi import APIRouter
 from app.api.v1.schemas import PaginatedResponse
 from . import controller
 from .schema import EntryResponse, FinanceSummaryResponse, InvoiceResponse
+from .customers.router import router as customers_router
 
 router = APIRouter()
 
+router.include_router(customers_router, prefix="/customers", tags=["customers"])
 router.get("/invoices", response_model=PaginatedResponse[InvoiceResponse])(controller.list_invoices)
 router.post("/invoices", response_model=InvoiceResponse)(controller.create_invoice)
 router.get("/invoices/{invoice_id}/pdf")(controller.download_invoice_pdf)

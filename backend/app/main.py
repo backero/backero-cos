@@ -20,9 +20,12 @@ if current_dir.name == "app":
 # Current project imports
 from app.api.v1.router import api_router
 from app.api.v1.roles.model import Role, RoleModulePermission  # noqa: F401 — registers models with Base
-from app.models.task import TaskComment  # noqa: F401 — registers task_comments table with Base
-from app.models.activity_log import ActivityLog  # noqa: F401 — registers activity_logs table with Base
-from app.models.payroll import PayrollRecord  # noqa: F401 — registers payroll_records table with Base
+from app.models.task import TaskComment, TaskChecklistItem, TaskTimeLog  # noqa: F401
+from app.models.activity_log import ActivityLog  # noqa: F401
+from app.models.activity_log_archive import ActivityLogArchive  # noqa: F401
+from app.models.payroll import PayrollRecord  # noqa: F401
+from app.models.finance import Customer  # noqa: F401
+from app.models.employee import AttendanceRegularization  # noqa: F401
 from app.core.config import settings
 from app.db.init_db import init_db
 from app.db.session import Base, engine

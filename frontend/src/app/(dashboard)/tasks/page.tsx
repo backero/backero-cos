@@ -56,6 +56,7 @@ import {
   useDepartments,
   useEmployees,
   useMe,
+  useMoveTask,
   useRejectTask,
   useSubmitCompletion,
   useTaskAttachments,
@@ -64,6 +65,17 @@ import {
   useUpdateTask,
   useUploadTaskAttachment,
 } from "@/hooks/use-queries";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { api } from "@/lib/api-client";
 import { cn, formatDate, getPriorityColor, getStatusColor } from "@/lib/utils";
 import type { ComplianceTask, Task, TaskAttachment } from "@/types";
@@ -355,6 +367,9 @@ export default function TasksPage() {
           <TabsTrigger value="tasks" className="gap-2">
             <CheckCircle2 className="w-3.5 h-3.5" /> My Tasks
           </TabsTrigger>
+          <TabsTrigger value="kanban" className="gap-2">
+            <ChevronRight className="w-3.5 h-3.5" /> Kanban
+          </TabsTrigger>
           <TabsTrigger value="compliance" className="gap-2">
             <FileCheck className="w-3.5 h-3.5" /> Compliance
             {complianceTasks && complianceTasks.filter((t) => !t.is_completed).length > 0 && (
@@ -403,6 +418,10 @@ export default function TasksPage() {
               )}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="kanban" className="mt-4">
+          <KanbanBoard tasks={tasks ?? []} isLoading={isLoading} onOpenTask={openTask} />
         </TabsContent>
 
         <TabsContent value="compliance" className="mt-4">
@@ -936,6 +955,128 @@ function TaskGroup({
         ))}
       </div>
     </div>
+  );
+}
+
+// ── Kanban Board ─────────────────────────────────────────────────────────────
+
+const KANBAN_COLUMNS: Array<{ status: string; label: string; color: string }> = [
+  { status: "pending", label: "Pending", color: "border-yellow-400" },
+  { status: "in_progress", label: "In Progress", color: "border-blue-400" },
+  { status: "pending_approval", label: "Pending Approval", color: "border-orange-400" },
+  { status: "overdue", label: "Overdue", color: "border-red-500" },
+  { status: "completed", label: "Completed", color: "border-green-500" },
+];
+
+function SortableKanbanCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <Card
+        className="cursor-pointer hover:shadow-md transition-shadow mb-2"
+        onClick={() => onOpen(task)}
+      >
+        <CardContent className="p-3 space-y-1.5">
+          <p className="text-xs font-medium leading-tight line-clamp-2">{task.title}</p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Badge className={cn("text-[9px] px-1 py-0 border-0", getPriorityColor(task.priority))}>{task.priority}</Badge>
+            {task.assigned_to_name && (
+              <span className="text-[10px] text-muted-foreground truncate max-w-[80px]">{task.assigned_to_name}</span>
+            )}
+          </div>
+          {task.due_date && (
+            <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+              <Clock className="w-2.5 h-2.5" />{formatDate(task.due_date)}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function KanbanBoard({ tasks, isLoading, onOpenTask }: { tasks: Task[]; isLoading: boolean; onOpenTask: (t: Task) => void }) {
+  const moveTask = useMoveTask();
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  const activeTask = tasks.find((t) => t.id === activeId);
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(String(event.active.id));
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setActiveId(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const draggedTask = tasks.find((t) => t.id === active.id);
+    if (!draggedTask) return;
+
+    const targetTask = tasks.find((t) => t.id === over.id);
+    const targetColumnId = (over.data.current as { columnStatus?: string } | undefined)?.columnStatus;
+    const newStatus = targetTask?.status ?? targetColumnId;
+    if (!newStatus || newStatus === draggedTask.status) return;
+
+    const siblingsInTarget = tasks
+      .filter((t) => t.status === newStatus)
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+    const newPosition = siblingsInTarget.length;
+
+    moveTask.mutate({ id: draggedTask.id, status: newStatus, position: newPosition });
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex gap-4 overflow-x-auto pb-4">
+        {KANBAN_COLUMNS.map((col) => (
+          <div key={col.status} className="w-64 shrink-0">
+            <Skeleton className="h-8 w-full mb-3" />
+            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20 mb-2 rounded-xl" />)}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <div className="flex gap-4 overflow-x-auto pb-4 min-h-[400px]">
+        {KANBAN_COLUMNS.map((col) => {
+          const colTasks = tasks.filter((t) => t.status === col.status).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+          return (
+            <div key={col.status} className={cn("w-64 shrink-0 rounded-xl border-t-2 bg-muted/40 p-2", col.color)}>
+              <div className="flex items-center justify-between mb-3 px-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{col.label}</p>
+                <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded-full font-medium">{colTasks.length}</span>
+              </div>
+              <SortableContext items={colTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+                {colTasks.map((task) => (
+                  <SortableKanbanCard key={task.id} task={task} onOpen={onOpenTask} />
+                ))}
+              </SortableContext>
+              {colTasks.length === 0 && (
+                <div className="py-6 text-center text-[11px] text-muted-foreground/60 border-2 border-dashed border-muted-foreground/20 rounded-lg">
+                  Drop here
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <DragOverlay>
+        {activeTask && (
+          <Card className="w-64 shadow-2xl rotate-1">
+            <CardContent className="p-3">
+              <p className="text-xs font-medium">{activeTask.title}</p>
+            </CardContent>
+          </Card>
+        )}
+      </DragOverlay>
+    </DndContext>
   );
 }
 
