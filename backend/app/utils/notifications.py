@@ -1,7 +1,15 @@
 import re
+import sys
 import httpx
 
 from app.core.config import settings
+
+# Force UTF-8 stdout on Windows so emoji/Unicode print calls don't crash uvicorn
+if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+    except Exception:
+        pass
 
 _WA_URL = "https://graph.facebook.com/v19.0/{phone_number_id}/messages"
 

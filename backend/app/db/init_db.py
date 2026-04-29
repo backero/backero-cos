@@ -37,6 +37,13 @@ async def migrate_columns() -> None:
             ALTER TABLE employees
             ADD COLUMN IF NOT EXISTS role_id UUID REFERENCES roles(id) ON DELETE SET NULL
         """))
+        # Soft-delete columns (Task, Invoice, Product use SoftDeleteMixin)
+        await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tasks_is_deleted ON tasks(is_deleted)"))
+        await conn.execute(text("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_invoices_is_deleted ON invoices(is_deleted)"))
+        await conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_products_is_deleted ON products(is_deleted)"))
         # Task attachments table
         await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS task_attachments (
