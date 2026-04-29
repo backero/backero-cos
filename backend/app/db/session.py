@@ -5,12 +5,18 @@ from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import settings
 
+_db_url = settings.DATABASE_URL
+# Supabase and most managed Postgres providers require SSL.
+# asyncpg reads the ssl= parameter from the URL directly.
+if "supabase" in _db_url and "ssl=" not in _db_url:
+    _db_url += ("&" if "?" in _db_url else "?") + "ssl=require"
+
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    _db_url,
     echo=settings.ENVIRONMENT == "development",
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=5,
+    max_overflow=10,
 )
 
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)

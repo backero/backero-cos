@@ -57,6 +57,12 @@ app = FastAPI(
     docs_url="/docs" if settings.ENVIRONMENT != "production" else None
 )
 
+
+@app.get("/health", tags=["health"])
+async def health_check():
+    return {"status": "ok"}
+
+
 @app.exception_handler(IntegrityError)
 async def integrity_error_handler(request: Request, exc: IntegrityError) -> JSONResponse:
     """Convert SQLAlchemy unique/FK violations into readable 409 responses."""
