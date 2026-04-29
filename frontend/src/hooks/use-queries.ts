@@ -439,6 +439,25 @@ export function useCreateRawMaterial() {
   });
 }
 
+export function useExportRawMaterials() {
+  return useMutation({
+    mutationFn: () => api.inventory.rawMaterials.export(),
+    onError: (e) => handleApiError(e),
+  });
+}
+
+export function useImportRawMaterials() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => api.inventory.rawMaterials.import(file),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QK.rawMaterials });
+      toast.success("Raw materials imported");
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+
 export function useBatches(params?: { status?: string }) {
   return useQuery({
     queryKey: QK.batches(params),

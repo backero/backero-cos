@@ -28,8 +28,8 @@ async function searchAll(q: string): Promise<SearchResult[]> {
   if (!q.trim()) return [];
   const results: SearchResult[] = [];
   await Promise.allSettled([
-    api.tasks.list({ search: q }).then((tasks) => {
-      tasks.slice(0, 3).forEach((t) =>
+    api.tasks.list({ search: q, limit: 3 }).then((res) => {
+      res.items.slice(0, 3).forEach((t) =>
         results.push({
           id: `task-${t.id}`,
           label: t.title,
@@ -39,13 +39,8 @@ async function searchAll(q: string): Promise<SearchResult[]> {
         })
       );
     }),
-    api.inventory.products.list({ category: undefined }).then((products) => {
-      products
-        .filter(
-          (p) =>
-            p.name.toLowerCase().includes(q.toLowerCase()) ||
-            p.sku.toLowerCase().includes(q.toLowerCase())
-        )
+    api.inventory.products.list({ search: q, limit: 3 }).then((res) => {
+      res.items
         .slice(0, 3)
         .forEach((p) =>
           results.push({
@@ -57,13 +52,8 @@ async function searchAll(q: string): Promise<SearchResult[]> {
           })
         );
     }),
-    api.employees.list({ is_active: true }).then((employees) => {
-      employees
-        .filter(
-          (e) =>
-            e.name.toLowerCase().includes(q.toLowerCase()) ||
-            e.phone.includes(q)
-        )
+    api.employees.list({ search: q, limit: 3 }).then((res) => {
+      res.items
         .slice(0, 3)
         .forEach((e) =>
           results.push({
@@ -75,13 +65,8 @@ async function searchAll(q: string): Promise<SearchResult[]> {
           })
         );
     }),
-    api.finance.invoices.list({ status: undefined }).then((invoices) => {
-      invoices
-        .filter(
-          (i) =>
-            i.invoice_number.toLowerCase().includes(q.toLowerCase()) ||
-            i.customer_name.toLowerCase().includes(q.toLowerCase())
-        )
+    api.finance.invoices.list({ search: q, limit: 3 }).then((res) => {
+      res.items
         .slice(0, 3)
         .forEach((i) =>
           results.push({

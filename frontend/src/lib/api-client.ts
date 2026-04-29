@@ -343,6 +343,48 @@ export const api = {
           method: "PATCH",
           body: JSON.stringify({ quantity, reason }),
         }),
+      export: async () => {
+        const items = await clientFetch<RawMaterial[]>("/inventory/raw-materials");
+        const headers = ["Name", "Unit", "Current Stock", "Reorder Level", "Cost Per Unit"];
+        const rows = items.map((m) => [
+          `"${m.name}"`,
+          m.unit,
+          m.current_stock,
+          m.reorder_level,
+          m.cost_per_unit ?? "",
+        ]);
+        const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+        const blob = new Blob([csv], { type: "text/csv" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `raw-materials-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      },
+      import: async (file: File) => {
+        const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+        const form = new FormData();
+        form.append("file", file);
+        const r = await fetch(`${API_BASE}/api/v1/inventory/raw-materials/import`, {
+          method: "POST",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: form,
+        });
+        if (!r.ok) {
+          const e = await r.json().catch(() => ({ detail: "Import failed" }));
+          throw new ApiError(e.detail || "Import failed", r.status);
+        }
+        return r.json();
+      },
+      sample: () => {
+        const csv = ["Name,Unit,Current Stock,Minimum Stock,Cost Per Unit", "Cotton Yarn,kg,500,100,120", "Dye Powder,g,2000,500,5"].join("\n");
+        const blob = new Blob([csv], { type: "text/csv" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "raw-materials-sample.csv";
+        a.click();
+        URL.revokeObjectURL(a.href);
+      },
     },
     batches: {
       list: (params?: { status?: string }) =>
