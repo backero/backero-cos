@@ -112,7 +112,8 @@ export default function ReportsPage() {
   const { data: summary, isLoading: summaryLoading } = useFinanceSummary({ from_date, to_date });
   const { data: monthlyTrend, isLoading: trendLoading } = useMonthlyTrend();
   const { data: platformSummary, isLoading: platformLoading } = usePlatformSummary();
-  const { data: allTasks, isLoading: tasksLoading } = useTasks();
+  const { data: allTasksData, isLoading: tasksLoading } = useTasks({ limit: 500 });
+  const allTasks = allTasksData?.items;
 
   // Task status breakdown for pie chart
   const taskBreakdown = (() => {
@@ -137,6 +138,54 @@ export default function ReportsPage() {
       }))
     : [];
 
+  function handleExport() {
+    const lines: string[] = [];
+
+    lines.push("FINANCIAL SUMMARY");
+    lines.push(`Period,${dateRange.replace(/_/g, " ")}`);
+    lines.push(`Revenue,${summary?.income ?? 0}`);
+    lines.push(`Expenses,${summary?.expense ?? 0}`);
+    lines.push(`Net P&L,${summary?.net ?? 0}`);
+    lines.push("");
+
+    if (monthlyTrend?.length) {
+      lines.push("MONTHLY TREND");
+      lines.push("Month,Revenue,Expenses");
+      monthlyTrend.forEach((row) => lines.push(`${row.month},${row.income},${row.expense}`));
+      lines.push("");
+    }
+
+    if (platformSummary?.length) {
+      lines.push("PLATFORM SALES");
+      lines.push("Platform,Orders,Units,Revenue");
+      platformSummary.forEach((row) =>
+        lines.push(`${row.platform},${row.orders},${row.units},${row.revenue}`)
+      );
+      lines.push("");
+    }
+
+    if (taskBreakdown.length) {
+      lines.push("TASK BREAKDOWN");
+      lines.push("Status,Count");
+      taskBreakdown.forEach((row) => lines.push(`${row.name},${row.value}`));
+      lines.push("");
+    }
+
+    if (invoiceBreakdown.length) {
+      lines.push("INVOICE STATUS");
+      lines.push("Status,Count,Amount");
+      invoiceBreakdown.forEach((row) => lines.push(`${row.status},${row.count},${row.amount}`));
+    }
+
+    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `report-${dateRange}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -159,7 +208,7 @@ export default function ReportsPage() {
               <SelectItem value="all_time">All Time</SelectItem>
             </SelectContent>
           </Select>
-          <Button size="sm" variant="outline">
+          <Button size="sm" variant="outline" onClick={handleExport}>
             <Download className="w-4 h-4 mr-1.5" /> Export
           </Button>
         </div>

@@ -115,7 +115,8 @@ export default function ProductionPage() {
     status: statusFilter || undefined,
   });
   const { data: rawMaterials, isLoading: rawMatsLoading } = useRawMaterials();
-  const { data: products } = useProducts();
+  const { data: productsData } = useProducts({ limit: 200 });
+  const products = productsData?.items;
 
   const createBatch = useCreateBatch();
   const updateBatchStatus = useUpdateBatchStatus();

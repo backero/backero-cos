@@ -81,6 +81,7 @@ SheetHeader.displayName = "SheetHeader";
 
 const SheetBody = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
+    data-vaul-no-drag
     className={cn("flex-1 overflow-y-auto px-6 py-5", className)}
     {...props}
   />

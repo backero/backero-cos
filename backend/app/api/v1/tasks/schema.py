@@ -5,18 +5,6 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 
-# ── Assignee/Reporter preview ─────────────────────────────────────────────────
-
-class EmployeePreview(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: UUID
-    name: str
-    avatar_url: Optional[str] = None
-    designation: Optional[str] = None
-
-
-# ── Task ──────────────────────────────────────────────────────────────────────
-
 class TaskCreate(BaseModel):
     title: str
     description: Optional[str] = None
@@ -35,27 +23,17 @@ class TaskUpdate(BaseModel):
     assigned_to_id: Optional[str] = None
 
 
-class TaskStatusUpdate(BaseModel):
-    status: str
-
-
 class ExtensionRequest(BaseModel):
     reason: str
     days: int
 
 
-class TaskCommentCreate(BaseModel):
-    content: str
+class CompletionSubmit(BaseModel):
+    note: Optional[str] = None
 
 
-class TaskCommentResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: UUID
-    task_id: UUID
-    author_id: UUID
-    content: str
-    created_at: datetime
-    author: Optional[EmployeePreview] = None
+class TaskReject(BaseModel):
+    note: Optional[str] = None
 
 
 class TaskResponse(BaseModel):
@@ -70,21 +48,42 @@ class TaskResponse(BaseModel):
     assigned_to_id: Optional[UUID] = None
     created_by_id: Optional[UUID] = None
     department_id: Optional[UUID] = None
+    assigned_to_name: Optional[str] = None
+    department_name: Optional[str] = None
+    created_by_name: Optional[str] = None
     extension_requested: bool
     extension_reason: Optional[str] = None
     extension_days: Optional[int] = None
+    completion_note: Optional[str] = None
+    completion_submitted_at: Optional[datetime] = None
     created_at: datetime
-    updated_at: datetime
-    assigned_to: Optional[EmployeePreview] = None
-    created_by: Optional[EmployeePreview] = None
-    comments: list[TaskCommentResponse] = []
-    comments_count: int = 0
 
-    @classmethod
-    def model_validate(cls, obj, **kwargs):
-        instance = super().model_validate(obj, **kwargs)
-        instance.comments_count = len(instance.comments)
-        return instance
+
+class TaskCommentCreate(BaseModel):
+    message: str
+
+
+class TaskCommentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    task_id: UUID
+    employee_id: UUID
+    employee_name: Optional[str] = None
+    employee_role: Optional[str] = None
+    message: str
+    created_at: datetime
+
+
+class TaskAttachmentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    task_id: UUID
+    uploaded_by_id: Optional[UUID] = None
+    uploaded_by_name: Optional[str] = None
+    filename: str
+    file_type: str
+    file_size: int
+    created_at: datetime
 
 
 class ComplianceTaskResponse(BaseModel):

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,11 +10,14 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   Box,
+  Download,
+  FileSpreadsheet,
   Loader2,
   Package,
   Plus,
   ShoppingBag,
   TrendingUp,
+  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Pagination } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,15 +49,12 @@ import {
   useAdjustStock,
   useCreatePlatformOrder,
   useCreateProduct,
-  useExportPlatformOrders,
-  useExportProducts,
-  useImportPlatformOrders,
-  useImportProducts,
   usePlatformSummary,
   useProducts,
 } from "@/hooks/use-queries";
-import { ImportExportMenu } from "@/components/ImportExportMenu";
+import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
+import { toast } from "sonner";
 import {
   cn,
   formatCurrency,
@@ -86,8 +87,14 @@ const adjustSchema = z.object({
   reason: z.string().min(2, "Reason required"),
 });
 
+const PLATFORM_OPTIONS = [
+  "amazon", "flipkart", "meesho", "website", "offline",
+  "nykaa", "myntra", "ajio", "snapdeal", "jiomart",
+  "zepto", "blinkit", "swiggy_instamart", "indiamart", "other",
+] as const;
+
 const platformOrderSchema = z.object({
-  platform: z.enum(["amazon", "flipkart", "meesho", "website", "offline"]),
+  platform: z.enum(PLATFORM_OPTIONS),
   order_id: z.string().min(1, "Order ID required"),
   product_name: z.string().min(1, "Product name required"),
   quantity: z.number().min(1, "Quantity must be at least 1"),
@@ -106,21 +113,25 @@ export default function InventoryPage() {
   const { modals, openModal, closeModal } = useUIStore();
   const [categoryFilter, setCategoryFilter] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const qc = useQueryClient();
   const todayStr = format(new Date(), "yyyy-MM-dd");
 
-  const { data: products, isLoading: productsLoading } = useProducts({
+  const [productPage, setProductPage] = useState(1);
+
+  const { data: productsData, isLoading: productsLoading } = useProducts({
     category: categoryFilter || undefined,
+    page: productPage,
+    limit: 50,
   });
+  const products = productsData?.items ?? [];
   const { data: platformSummary, isLoading: platformLoading } =
     usePlatformSummary(todayStr);
 
   const createProduct = useCreateProduct();
   const adjustStock = useAdjustStock();
   const createPlatformOrder = useCreatePlatformOrder();
-  const exportProducts = useExportProducts();
-  const importProducts = useImportProducts();
-  const exportOrders = useExportPlatformOrders();
-  const importOrders = useImportPlatformOrders();
 
   const productForm = useForm<ProductForm>({
     resolver: zodResolver(productSchema),
@@ -142,19 +153,19 @@ export default function InventoryPage() {
   const platformOrderForm = useForm<PlatformOrderForm>({
     resolver: zodResolver(platformOrderSchema),
     defaultValues: {
-      platform: "amazon",
+      platform: "amazon" as PlatformOrderForm["platform"],
       order_id: "",
       product_name: "",
       quantity: 1,
       amount: 0,
-      status: "pending",
+      status: "pending" as PlatformOrderForm["status"],
       order_date: format(new Date(), "yyyy-MM-dd"),
     },
   });
 
-  const lowStockProducts = products?.filter((p) => p.is_low_stock) ?? [];
+  const lowStockProducts = products.filter((p) => p.is_low_stock);
   const categories = Array.from(
-    new Set(products?.map((p) => p.category).filter(Boolean)),
+    new Set(products.map((p) => p.category).filter(Boolean)),
   ) as string[];
 
   async function onCreateProduct(data: ProductForm) {
@@ -181,15 +192,31 @@ export default function InventoryPage() {
     openModal("adjustStock");
   }
 
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportLoading(true);
+    try {
+      const result = await api.inventory.importProducts(file);
+      toast.success(`Imported ${result.created} products (${result.skipped} skipped${result.errors?.length ? `, ${result.errors.length} errors` : ""})`);
+      qc.invalidateQueries({ queryKey: ["products"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImportLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
   async function onLogPlatformOrder(data: PlatformOrderForm) {
     await createPlatformOrder.mutateAsync(data as Record<string, unknown>);
     platformOrderForm.reset({
-      platform: "amazon",
+      platform: "amazon" as PlatformOrderForm["platform"],
       order_id: "",
       product_name: "",
       quantity: 1,
       amount: 0,
-      status: "pending",
+      status: "pending" as PlatformOrderForm["status"],
       order_date: format(new Date(), "yyyy-MM-dd"),
     });
     closeModal("logOrder");
@@ -235,20 +262,9 @@ export default function InventoryPage() {
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
             Today's Orders by Platform
           </h3>
-          <div className="flex items-center gap-2">
-            <ImportExportMenu
-              onExport={() => exportOrders.mutateAsync()}
-              onImport={(f) => importOrders.mutateAsync(f)}
-              onSampleDownload={() => api.inventory.platformOrders.sample()}
-              exportLabel="Export Orders"
-              importLabel="Import Orders"
-              isExporting={exportOrders.isPending}
-              isImporting={importOrders.isPending}
-            />
-            <Button size="sm" variant="outline" onClick={() => openModal("logOrder")}>
-              <Plus className="w-4 h-4 mr-1.5" /> Log Order
-            </Button>
-          </div>
+          <Button size="sm" variant="outline" onClick={() => openModal("logOrder")}>
+            <Plus className="w-4 h-4 mr-1.5" /> Log Order
+          </Button>
         </div>
         {platformLoading ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -297,11 +313,11 @@ export default function InventoryPage() {
           <div>
             <h3 className="font-semibold text-base">Products & Stock</h3>
             <p className="text-muted-foreground text-sm">
-              {products?.length ?? 0} products ·{" "}
+              {productsData?.total ?? 0} products ·{" "}
               <span className="text-orange-500">{lowStockProducts.length} low stock</span>
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Select
               value={categoryFilter || "all"}
               onValueChange={(v) => setCategoryFilter(v === "all" ? "" : v)}
@@ -316,14 +332,40 @@ export default function InventoryPage() {
                 ))}
               </SelectContent>
             </Select>
-            <ImportExportMenu
-              onExport={() => exportProducts.mutateAsync()}
-              onImport={(f) => importProducts.mutateAsync(f)}
-              onSampleDownload={() => api.inventory.products.sample()}
-              exportLabel="Export Products"
-              importLabel="Import Products"
-              isExporting={exportProducts.isPending}
-              isImporting={importProducts.isPending}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => api.inventory.importTemplate()}
+              title="Download import template (Excel)"
+            >
+              <FileSpreadsheet className="w-4 h-4 mr-1.5" /> Template
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => api.inventory.exportProducts()}
+              title="Export all products as Excel"
+            >
+              <Download className="w-4 h-4 mr-1.5" /> Export
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={importLoading}
+              onClick={() => fileInputRef.current?.click()}
+              title="Import products from Excel or CSV"
+            >
+              {importLoading
+                ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
+                : <Upload className="w-4 h-4 mr-1.5" />}
+              Import
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              className="hidden"
+              onChange={handleImport}
             />
             <Button size="sm" onClick={() => openModal("createProduct")}>
               <Plus className="w-4 h-4 mr-1.5" /> Add Product
@@ -337,7 +379,7 @@ export default function InventoryPage() {
               <Skeleton key={i} className="h-52 rounded-xl" />
             ))}
           </div>
-        ) : products?.length === 0 ? (
+        ) : productsData?.total === 0 ? (
           <Card>
             <CardContent className="py-16 text-center">
               <Package className="w-12 h-12 mx-auto mb-3 text-muted-foreground/30" />
@@ -348,16 +390,21 @@ export default function InventoryPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {products?.map((product, i) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                index={i}
-                onAdjust={() => openAdjustModal(product)}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {products.map((product, i) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  index={i}
+                  onAdjust={() => openAdjustModal(product)}
+                />
+              ))}
+            </div>
+            {productsData && productsData.pages > 1 && (
+              <Pagination page={productsData.page} pages={productsData.pages} total={productsData.total} limit={productsData.limit} onPageChange={setProductPage} />
+            )}
+          </>
         )}
       </div>
 
@@ -470,8 +517,8 @@ export default function InventoryPage() {
                   >
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {(["amazon", "flipkart", "meesho", "website", "offline"] as const).map((p) => (
-                        <SelectItem key={p} value={p} className="capitalize">{p}</SelectItem>
+                      {PLATFORM_OPTIONS.map((p) => (
+                        <SelectItem key={p} value={p} className="capitalize">{p.replace(/_/g, " ")}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -656,7 +703,7 @@ function ProductCard({
       transition={{ delay: index * 0.06, duration: 0.35 }}
       whileHover={{ y: -2 }}
     >
-      <Card className={cn("overflow-hidden", isLow && "card-premium-orange")}>
+      <Card className={cn("overflow-hidden transition-shadow hover:shadow-md", isLow && "border-orange-200 dark:border-orange-800")}>
         <CardContent className="p-4 space-y-3">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">

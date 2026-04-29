@@ -1,0 +1,28 @@
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Node
+node_modules/
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Large binaries / installers
+*.exe
+*.msi
+*.dmg
+
+# Upload directories
+backend/uploads/
+
+# Temp / local scripts
+backend/tmp_*.py
+backend/check_*.ps1
+backend/reset_*.ps1
+backend/test_*.ps1

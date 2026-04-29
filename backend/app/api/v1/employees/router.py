@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.v1.schemas import PaginatedResponse
 from . import controller
 from .schema import AttendanceResponse, DepartmentResponse, EmployeeResponse
 
@@ -7,10 +8,8 @@ router = APIRouter()
 
 router.get("/departments", response_model=list[DepartmentResponse])(controller.list_departments)
 router.post("/departments", response_model=DepartmentResponse)(controller.create_department)
-router.get("/export")(controller.export_employees)
-router.get("/sample")(controller.employees_sample)
-router.post("/import")(controller.import_employees)
-router.get("/", response_model=list[EmployeeResponse])(controller.list_employees)
+router.patch("/departments/{dept_id}", response_model=DepartmentResponse)(controller.update_department)
+router.get("/", response_model=PaginatedResponse[EmployeeResponse])(controller.list_employees)
 router.post("/", response_model=EmployeeResponse)(controller.create_employee)
 router.get("/{employee_id}", response_model=EmployeeResponse)(controller.get_employee)
 router.patch("/{employee_id}", response_model=EmployeeResponse)(controller.update_employee)

@@ -16,6 +16,7 @@ MODULES = [
     "production",
     "reports",
     "roles",
+    "records",
 ]
 
 # Default role seeds
@@ -69,8 +70,11 @@ DEFAULT_ROLES = [
         "color": "#64748b",
         "is_system": False,
         "permissions": {
-            "dashboard": {"can_view": True, "can_create": False, "can_edit": False},
-            "tasks":     {"can_view": True, "can_create": True,  "can_edit": False},
+            "dashboard":  {"can_view": True, "can_create": False, "can_edit": False},
+            "tasks":      {"can_view": True, "can_create": False, "can_edit": False},
+            "inventory":  {"can_view": True, "can_create": False, "can_edit": False},
+            "production": {"can_view": True, "can_create": False, "can_edit": False},
+            "reports":    {"can_view": True, "can_create": False, "can_edit": False},
         },
     },
 ]

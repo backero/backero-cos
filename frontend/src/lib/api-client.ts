@@ -15,6 +15,7 @@ export class ApiError extends Error {
 }
 import type {
   AccountEntry,
+  ActivityLog,
   Attendance,
   AuthUser,
   AuthResponse,
@@ -27,7 +28,7 @@ import type {
   Module,
   ModuleAccess,
   MonthlyTrend,
-  Notification,
+  PaginatedResponse,
   PlatformOrder,
   PlatformSummary,
   Product,
@@ -35,6 +36,7 @@ import type {
   RawMaterial,
   RoleDetail,
   Task,
+  TaskAttachment,
   TaskComment,
 } from "@/types";
 
@@ -79,50 +81,6 @@ export async function serverFetch<T>(
   return res.json();
 }
 
-/** Download a file from the API and trigger browser download */
-export async function clientDownload(path: string, filename: string, options: FetchOptions = {}): Promise<void> {
-  const { params, ...init } = options;
-  const url = buildUrl(path, params);
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
-  const res = await fetch(url, {
-    ...init,
-    credentials: "include",
-    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init.headers },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Download failed" }));
-    throw new ApiError(err.detail || "Download failed", res.status);
-  }
-  const blob = await res.blob();
-  const blobUrl = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = blobUrl;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(blobUrl);
-}
-
-/** Upload a file and return JSON response */
-export async function clientUpload<T>(path: string, file: File): Promise<T> {
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
-  const url = buildUrl(path);
-  const form = new FormData();
-  form.append("file", file);
-  const res = await fetch(url, {
-    method: "POST",
-    credentials: "include",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: form,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Upload failed" }));
-    throw new ApiError(err.detail || "Upload failed", res.status);
-  }
-  return res.json();
-}
-
 /** Client-side fetch — used inside TanStack Query hooks */
 export async function clientFetch<T>(
   path: string,
@@ -147,7 +105,19 @@ export async function clientFetch<T>(
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "Request failed" }));
     const field = err.field ?? res.headers.get("X-Field") ?? null;
-    throw new ApiError(err.detail || "Request failed", res.status, field);
+    const rawDetail = err.detail;
+    let message: string;
+    if (typeof rawDetail === "string") {
+      message = rawDetail;
+    } else if (Array.isArray(rawDetail)) {
+      // FastAPI validation error: [{loc, msg, type}, ...]
+      message = rawDetail.map((e: Record<string, unknown>) => String(e.msg ?? JSON.stringify(e))).join("; ");
+    } else if (rawDetail) {
+      message = JSON.stringify(rawDetail);
+    } else {
+      message = "Request failed";
+    }
+    throw new ApiError(message, res.status, field);
   }
   return res.json();
 }
@@ -179,8 +149,8 @@ export const api = {
 
   // Employees
   employees: {
-    list: (params?: { department_id?: string; is_active?: boolean }) =>
-      clientFetch<Employee[]>("/employees/", { params }),
+    list: (params?: { department_id?: string; is_active?: boolean; search?: string; page?: number; limit?: number }) =>
+      clientFetch<PaginatedResponse<Employee>>("/employees/", { params }),
     get: (id: string) => clientFetch<Employee>(`/employees/${id}`),
     create: (data: Record<string, unknown>) =>
       clientFetch<Employee>("/employees/", {
@@ -203,15 +173,17 @@ export const api = {
       clientFetch<Attendance[]>(`/employees/${id}/attendance`, {
         params: { month, year },
       }),
-    export: () => clientDownload("/employees/export", "employees.xlsx"),
-    sample: () => clientDownload("/employees/sample", "employees_sample.xlsx"),
-    import: (file: File) => clientUpload<{ created: number; skipped: number; errors: string[] }>("/employees/import", file),
 
     departments: {
       list: () => clientFetch<Department[]>("/employees/departments"),
       create: (data: { name: string; description?: string }) =>
         clientFetch<Department>("/employees/departments", {
           method: "POST",
+          body: JSON.stringify(data),
+        }),
+      update: (id: string, data: { name: string; description?: string }) =>
+        clientFetch<Department>(`/employees/departments/${id}`, {
+          method: "PATCH",
           body: JSON.stringify(data),
         }),
     },
@@ -223,10 +195,10 @@ export const api = {
       status?: string;
       priority?: string;
       assigned_to_id?: string;
-      department_id?: string;
       search?: string;
-    }) => clientFetch<Task[]>("/tasks/", { params }),
-    get: (id: string) => clientFetch<Task>(`/tasks/${id}`),
+      page?: number;
+      limit?: number;
+    }) => clientFetch<PaginatedResponse<Task>>("/tasks/", { params }),
     create: (data: Record<string, unknown>) =>
       clientFetch<Task>("/tasks/", {
         method: "POST",
@@ -237,34 +209,68 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
-    updateStatus: (id: string, status: string) =>
-      clientFetch<Task>(`/tasks/${id}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ status }),
-      }),
     complete: (id: string) =>
       clientFetch<Task>(`/tasks/${id}/complete`, { method: "POST" }),
+    submitCompletion: (id: string, note?: string) =>
+      clientFetch<Task>(`/tasks/${id}/submit-completion`, {
+        method: "POST",
+        body: JSON.stringify({ note }),
+      }),
+    approve: (id: string) =>
+      clientFetch<Task>(`/tasks/${id}/approve`, { method: "POST" }),
+    reject: (id: string, note?: string) =>
+      clientFetch<Task>(`/tasks/${id}/reject`, {
+        method: "POST",
+        body: JSON.stringify({ note }),
+      }),
     delete: (id: string) =>
       clientFetch<{ message: string }>(`/tasks/${id}`, { method: "DELETE" }),
     compliance: () => clientFetch<ComplianceTask[]>("/tasks/compliance"),
-    export: (params?: { status?: string; priority?: string }) =>
-      clientDownload("/tasks/export", "tasks.xlsx", { params }),
-    addComment: (taskId: string, content: string) =>
-      clientFetch<TaskComment>(`/tasks/${taskId}/comments`, {
-        method: "POST",
-        body: JSON.stringify({ content }),
-      }),
-  },
-
-  // Notifications
-  notifications: {
-    list: (unread_only?: boolean) =>
-      clientFetch<Notification[]>("/notifications/", { params: { unread_only } }),
-    unreadCount: () => clientFetch<{ count: number }>("/notifications/unread-count"),
-    markRead: (id: string) =>
-      clientFetch<{ message: string }>(`/notifications/${id}/read`, { method: "PATCH" }),
-    markAllRead: () =>
-      clientFetch<{ message: string }>("/notifications/mark-all-read", { method: "PATCH" }),
+    comments: {
+      list: (taskId: string) => clientFetch<TaskComment[]>(`/tasks/${taskId}/comments`),
+      add: (taskId: string, message: string) =>
+        clientFetch<TaskComment>(`/tasks/${taskId}/comments`, {
+          method: "POST",
+          body: JSON.stringify({ message }),
+        }),
+    },
+    attachments: {
+      list: (taskId: string) => clientFetch<TaskAttachment[]>(`/tasks/${taskId}/attachments`),
+      upload: (taskId: string, file: File) => {
+        const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+        const form = new FormData();
+        form.append("file", file);
+        return fetch(`${API_BASE}/api/v1/tasks/${taskId}/attachments`, {
+          method: "POST",
+          credentials: "include",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: form,
+        }).then(async (r) => {
+          if (!r.ok) {
+            const e = await r.json().catch(() => ({ detail: "Upload failed" }));
+            throw new ApiError(e.detail || "Upload failed", r.status);
+          }
+          return r.json() as Promise<TaskAttachment>;
+        });
+      },
+      download: async (taskId: string, attachmentId: string, filename: string) => {
+        const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+        const url = `${API_BASE}/api/v1/tasks/${taskId}/attachments/${attachmentId}/download`;
+        const r = await fetch(url, {
+          credentials: "include",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!r.ok) throw new Error("Download failed");
+        const blob = await r.blob();
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+      },
+    },
   },
 
   // Finance
@@ -274,37 +280,35 @@ export const api = {
         status?: string;
         from_date?: string;
         to_date?: string;
-      }) => clientFetch<Invoice[]>("/finance/invoices", { params }),
+        search?: string;
+        page?: number;
+        limit?: number;
+      }) => clientFetch<PaginatedResponse<Invoice>>("/finance/invoices", { params }),
       create: (data: Record<string, unknown>) =>
         clientFetch<Invoice>("/finance/invoices", {
           method: "POST",
           body: JSON.stringify(data),
         }),
-        updateStatus: (id: string, status: string) =>
+      updateStatus: (id: string, status: string) =>
         clientFetch<Invoice>(
           `/finance/invoices/${id}/status?status=${status}`,
           { method: "PATCH" },
         ),
-      downloadPdf: (id: string, invoiceNumber: string) =>
-        clientDownload(`/finance/invoices/${id}/pdf`, `invoice-${invoiceNumber}.pdf`),
-      export: (params?: { status?: string; from_date?: string; to_date?: string }) =>
-        clientDownload("/finance/invoices/export", "invoices.xlsx", { params }),
     },
     entries: {
       list: (params?: {
         type?: string;
         from_date?: string;
         to_date?: string;
-      }) => clientFetch<AccountEntry[]>("/finance/entries", { params }),
+        search?: string;
+        page?: number;
+        limit?: number;
+      }) => clientFetch<PaginatedResponse<AccountEntry>>("/finance/entries", { params }),
       create: (data: Record<string, unknown>) =>
         clientFetch<AccountEntry>("/finance/entries", {
           method: "POST",
           body: JSON.stringify(data),
         }),
-      export: (params?: { type?: string; from_date?: string; to_date?: string }) =>
-        clientDownload("/finance/entries/export", "finance_entries.xlsx", { params }),
-      sample: () => clientDownload("/finance/entries/sample", "entries_sample.xlsx"),
-      import: (file: File) => clientUpload<{ created: number; skipped: number; errors: string[] }>("/finance/entries/import", file),
     },
     summary: (params?: { from_date?: string; to_date?: string }) =>
       clientFetch<FinanceSummary>("/finance/summary", { params }),
@@ -313,8 +317,8 @@ export const api = {
   // Inventory
   inventory: {
     products: {
-      list: (params?: { category?: string; low_stock?: boolean }) =>
-        clientFetch<Product[]>("/inventory/products", { params }),
+      list: (params?: { category?: string; low_stock?: boolean; search?: string; page?: number; limit?: number }) =>
+        clientFetch<PaginatedResponse<Product>>("/inventory/products", { params }),
       get: (id: string) => clientFetch<Product>(`/inventory/products/${id}`),
       create: (data: Record<string, unknown>) =>
         clientFetch<Product>("/inventory/products", {
@@ -326,9 +330,6 @@ export const api = {
           method: "POST",
           body: JSON.stringify({ quantity, reason }),
         }),
-      export: () => clientDownload("/inventory/products/export", "products.xlsx"),
-      sample: () => clientDownload("/inventory/products/sample", "products_sample.xlsx"),
-      import: (file: File) => clientUpload<{ created: number; skipped: number; errors: string[] }>("/inventory/products/import", file),
     },
     rawMaterials: {
       list: () => clientFetch<RawMaterial[]>("/inventory/raw-materials"),
@@ -342,9 +343,6 @@ export const api = {
           method: "PATCH",
           body: JSON.stringify({ quantity, reason }),
         }),
-      export: () => clientDownload("/inventory/raw-materials/export", "raw_materials.xlsx"),
-      sample: () => clientDownload("/inventory/raw-materials/sample", "raw_materials_sample.xlsx"),
-      import: (file: File) => clientUpload<{ created: number; skipped: number; errors: string[] }>("/inventory/raw-materials/import", file),
     },
     batches: {
       list: (params?: { status?: string }) =>
@@ -365,22 +363,56 @@ export const api = {
         platform?: string;
         from_date?: string;
         to_date?: string;
+        search?: string;
+        page?: number;
+        limit?: number;
       }) =>
-        clientFetch<PlatformOrder[]>("/inventory/platform-orders", { params }),
+        clientFetch<PaginatedResponse<PlatformOrder>>("/inventory/platform-orders", { params }),
       create: (data: Record<string, unknown>) =>
         clientFetch<PlatformOrder>("/inventory/platform-orders", {
           method: "POST",
           body: JSON.stringify(data),
         }),
-      export: (params?: { platform?: string; from_date?: string; to_date?: string }) =>
-        clientDownload("/inventory/platform-orders/export", "platform_orders.xlsx", { params }),
-      sample: () => clientDownload("/inventory/platform-orders/sample", "platform_orders_sample.xlsx"),
-      import: (file: File) => clientUpload<{ created: number; skipped: number; errors: string[] }>("/inventory/platform-orders/import", file),
     },
     platformSummary: (order_date?: string) =>
       clientFetch<PlatformSummary[]>("/inventory/platform-summary", {
         params: { order_date },
       }),
+    importTemplate: () => {
+      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+      const url = `${API_BASE}/api/v1/inventory/products/import/template`;
+      const a = document.createElement("a");
+      a.href = url;
+      a.click();
+    },
+    exportProducts: () => {
+      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+      const url = `${API_BASE}/api/v1/inventory/products/export`;
+      fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+        .then((r) => r.blob())
+        .then((blob) => {
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = "products_export.xlsx";
+          a.click();
+        });
+    },
+    importProducts: (file: File) => {
+      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+      const form = new FormData();
+      form.append("file", file);
+      return fetch(`${API_BASE}/api/v1/inventory/products/import`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      }).then(async (r) => {
+        if (!r.ok) {
+          const e = await r.json().catch(() => ({ detail: "Import failed" }));
+          throw new ApiError(e.detail || "Import failed", r.status);
+        }
+        return r.json();
+      });
+    },
   },
 
   // Dashboard
@@ -396,6 +428,41 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
+  },
+
+  // Records (Activity Log)
+  records: {
+    list: (params?: { entity_type?: string; action?: string; page?: number; limit?: number }) =>
+      clientFetch<PaginatedResponse<ActivityLog>>("/records/", { params }),
+    restore: (id: string) =>
+      clientFetch<{ message: string; entity_type: string; entity_name?: string }>(`/records/${id}/restore`, { method: "POST" }),
+  },
+
+  // Finance — invoice PDF download
+  invoicePdf: async (invoiceId: string, invoiceNumber?: string) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    const url = `${API_BASE}/api/v1/finance/invoices/${invoiceId}/pdf`;
+    try {
+      const r = await fetch(url, {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ detail: "Download failed" }));
+        throw new ApiError(err.detail || "Download failed", r.status);
+      }
+      const blob = await r.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = invoiceNumber ? `Invoice_${invoiceNumber}.pdf` : `invoice_${invoiceId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      const { toast } = await import("sonner");
+      toast.error(e instanceof Error ? e.message : "Failed to download invoice");
+    }
   },
 
   // Roles & Permissions

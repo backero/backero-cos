@@ -29,12 +29,22 @@ class Settings(BaseSettings):
     MSG91_TEMPLATE_ID: str = ""
     MSG91_SENDER_ID: str = "BACKRO"
 
-    # Interakt (WhatsApp)
-    INTERAKT_API_KEY: str = ""
+    # Meta WhatsApp Cloud API
+    WHATSAPP_ACCESS_TOKEN: str = ""
+    WHATSAPP_PHONE_NUMBER_ID: str = ""
+    WHATSAPP_TEMPLATE_NAME: str = "backero_notification"
 
     # Bootstrap admin
     ADMIN_PHONE: str = "9999999999"
     ADMIN_NAME: str = "Admin User"
+
+    # Email (SMTP)
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = "noreply@backero.in"
+    SMTP_FROM_NAME: str = "Backero COS"
 
     # App
     ENVIRONMENT: str = "development"

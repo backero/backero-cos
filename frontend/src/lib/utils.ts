@@ -69,6 +69,8 @@ export function getStatusColor(status: string): string {
     case "pending":
     case "planned":
       return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400";
+    case "pending_approval":
+      return "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400";
     case "overdue":
     case "cancelled":
     case "absent":
@@ -94,8 +96,26 @@ export function getPlatformColor(platform: string): string {
       return "bg-purple-500";
     case "offline":
       return "bg-gray-500";
+    case "nykaa":
+      return "bg-rose-500";
+    case "myntra":
+      return "bg-fuchsia-500";
+    case "ajio":
+      return "bg-red-600";
+    case "snapdeal":
+      return "bg-red-400";
+    case "jiomart":
+      return "bg-blue-700";
+    case "zepto":
+      return "bg-yellow-500";
+    case "blinkit":
+      return "bg-yellow-400";
+    case "swiggy_instamart":
+      return "bg-orange-600";
+    case "indiamart":
+      return "bg-green-600";
     default:
-      return "bg-gray-500";
+      return "bg-slate-500";
   }
 }
 

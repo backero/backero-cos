@@ -1,26 +1,25 @@
 from typing import Optional
 
-from fastapi import Depends, Query
-from fastapi.responses import Response
+from fastapi import Depends, File, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.schemas import PaginatedResponse
 from app.core.dependencies import CurrentUser, ManagerUser
 from app.db.session import get_db
-from app.utils import excel as xl
 
 from . import service
 from .schema import (
+    CompletionSubmit,
     ComplianceTaskResponse,
     ExtensionRequest,
+    TaskAttachmentResponse,
     TaskCommentCreate,
     TaskCommentResponse,
     TaskCreate,
+    TaskReject,
     TaskResponse,
-    TaskStatusUpdate,
     TaskUpdate,
 )
-
-_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 async def list_tasks(
@@ -29,29 +28,22 @@ async def list_tasks(
     assigned_to_id: Optional[str] = Query(None),
     department_id: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = None,
-) -> list[TaskResponse]:
+) -> PaginatedResponse[TaskResponse]:
     return await service.list_tasks(
-        db, current_user.id, current_user.role, status, priority,
-        assigned_to_id, department_id, search,
+        db, current_user.id, current_user.role, status, priority, assigned_to_id, department_id, search, page, limit
     )
-
-
-async def get_task(
-    task_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: CurrentUser = None,
-) -> TaskResponse:
-    return await service.get_task(db, task_id)
 
 
 async def create_task(
     body: TaskCreate,
-    current_user: CurrentUser = None,
+    current_user: ManagerUser = None,
     db: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
-    return await service.create_task(db, body, current_user.id)
+    return await service.create_task(db, body, current_user.id, current_user.name)
 
 
 async def update_task(
@@ -60,21 +52,12 @@ async def update_task(
     current_user: CurrentUser = None,
     db: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
-    return await service.update_task(db, task_id, body, current_user.id)
-
-
-async def update_task_status(
-    task_id: str,
-    body: TaskStatusUpdate,
-    current_user: CurrentUser = None,
-    db: AsyncSession = Depends(get_db),
-) -> TaskResponse:
-    return await service.update_task_status(db, task_id, body, current_user.id)
+    return await service.update_task(db, task_id, body, current_user.id, current_user.role)
 
 
 async def complete_task(
     task_id: str,
-    current_user: CurrentUser = None,
+    current_user: ManagerUser = None,
     db: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
     return await service.complete_task(db, task_id)
@@ -94,17 +77,34 @@ async def delete_task(
     current_user: ManagerUser = None,
     db: AsyncSession = Depends(get_db),
 ):
-    await service.delete_task(db, task_id)
+    await service.delete_task(db, task_id, current_user.id, current_user.name)
     return {"message": "Task deleted"}
 
 
-async def add_comment(
+async def submit_completion(
     task_id: str,
-    body: TaskCommentCreate,
+    body: CompletionSubmit,
     current_user: CurrentUser = None,
     db: AsyncSession = Depends(get_db),
-) -> TaskCommentResponse:
-    return await service.add_comment(db, task_id, body, current_user.id)
+) -> TaskResponse:
+    return await service.submit_completion(db, task_id, body, current_user.id)
+
+
+async def approve_task(
+    task_id: str,
+    current_user: CurrentUser = None,
+    db: AsyncSession = Depends(get_db),
+) -> TaskResponse:
+    return await service.approve_task(db, task_id, current_user.id, current_user.role)
+
+
+async def reject_task(
+    task_id: str,
+    body: TaskReject,
+    current_user: CurrentUser = None,
+    db: AsyncSession = Depends(get_db),
+) -> TaskResponse:
+    return await service.reject_task(db, task_id, body, current_user.id, current_user.role)
 
 
 async def list_compliance_tasks(
@@ -114,24 +114,44 @@ async def list_compliance_tasks(
     return await service.list_compliance_tasks(db)
 
 
-async def export_tasks(
-    status: Optional[str] = Query(None),
-    priority: Optional[str] = Query(None),
-    db: AsyncSession = Depends(get_db),
+async def add_comment(
+    task_id: str,
+    body: TaskCommentCreate,
     current_user: CurrentUser = None,
+    db: AsyncSession = Depends(get_db),
+) -> TaskCommentResponse:
+    return await service.add_comment(db, task_id, body, current_user.id, current_user.role)
+
+
+async def list_comments(
+    task_id: str,
+    current_user: CurrentUser = None,
+    db: AsyncSession = Depends(get_db),
+) -> list[TaskCommentResponse]:
+    return await service.list_comments(db, task_id, current_user.id, current_user.role)
+
+
+async def upload_attachment(
+    task_id: str,
+    file: UploadFile = File(...),
+    current_user: CurrentUser = None,
+    db: AsyncSession = Depends(get_db),
+) -> TaskAttachmentResponse:
+    return await service.upload_attachment(db, task_id, file, current_user.id)
+
+
+async def list_attachments(
+    task_id: str,
+    current_user: CurrentUser = None,
+    db: AsyncSession = Depends(get_db),
+) -> list[TaskAttachmentResponse]:
+    return await service.list_attachments(db, task_id)
+
+
+async def download_attachment(
+    task_id: str,
+    attachment_id: str,
+    current_user: CurrentUser = None,
+    db: AsyncSession = Depends(get_db),
 ):
-    tasks = await service.list_tasks(db, current_user.id, current_user.role, status, priority)
-    rows = []
-    for t in tasks:
-        rows.append({
-            "title": t.title,
-            "priority": t.priority,
-            "status": t.status,
-            "due_date": t.due_date.strftime("%Y-%m-%d") if t.due_date else "",
-            "assigned_to": t.assigned_to.name if t.assigned_to else "",
-            "created_by": t.created_by.name if t.created_by else "",
-            "description": t.description or "",
-        })
-    data = xl.export_tasks(rows)
-    return Response(content=data, media_type=_XLSX,
-                    headers={"Content-Disposition": "attachment; filename=tasks.xlsx"})
+    return await service.download_attachment(db, task_id, attachment_id)

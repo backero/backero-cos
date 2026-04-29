@@ -2,15 +2,19 @@ import uuid
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.mixins import TimestampMixin, UUIDMixin
+from app.db.mixins import SoftDeleteMixin, TimestampMixin, UUIDMixin
 from app.db.session import Base
 
 
-class Invoice(Base, UUIDMixin, TimestampMixin):
+class Invoice(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
+    __table_args__ = (
+        Index("ix_invoices_status_date", "status", "invoice_date"),
+        Index("ix_invoices_customer", "customer_name"),
+    )
     __tablename__ = "invoices"
 
     invoice_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)

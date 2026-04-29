@@ -6,6 +6,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  Activity,
   BarChart3,
   Box,
   ChevronLeft,
@@ -18,6 +19,7 @@ import {
   ShieldCheck,
   User,
   Users,
+  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
@@ -55,9 +57,11 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Finance",   href: "/finance",   icon: Receipt,         module: "finance"   },
   { label: "Inventory", href: "/inventory", icon: Box,             module: "inventory" },
   { label: "Employees", href: "/employees", icon: Users,           module: "employees" },
+  { label: "Payroll",   href: "/payroll",   icon: Wallet,          module: "employees" },
   { label: "Production",href: "/production",icon: Factory,         module: "production"},
   { label: "Reports",   href: "/reports",   icon: BarChart3,       module: "reports"   },
   { label: "Roles",     href: "/roles",     icon: ShieldCheck,     module: "roles"     },
+  { label: "Records",   href: "/records",   icon: Activity,        module: "records"   },
 ];
 
 export function AppSidebar() {

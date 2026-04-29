@@ -32,25 +32,21 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Pagination } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   useCreateEntry,
   useCreateInvoice,
-  useDownloadInvoicePdf,
   useEntries,
-  useExportFinanceEntries,
-  useExportInvoices,
   useFinanceSummary,
-  useImportFinanceEntries,
   useInvoices,
   useUpdateInvoiceStatus,
 } from "@/hooks/use-queries";
-import { ImportExportMenu } from "@/components/ImportExportMenu";
-import { api } from "@/lib/api-client";
 import { cn, formatCurrency, formatDate, getStatusColor } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
+import { api } from "@/lib/api-client";
 import type { Invoice } from "@/types";
 
 // ── Schemas ────────────────────────────────────────────────────────────────────
@@ -60,7 +56,7 @@ const entrySchema = z.object({
   type: z.enum(["income", "expense"]),
   category: z.string().min(1, "Category required"),
   description: z.string().min(2),
-  amount: z.number().positive("Amount must be positive"),
+  amount: z.number().positive("Amount must be positive").max(99999999, "Amount too large (max ₹9,99,99,999)"),
   payment_mode: z.enum(["cash", "bank", "upi", "cheque"]),
   reference: z.string().optional(),
 });
@@ -94,17 +90,18 @@ type InvoiceForm = z.infer<typeof invoiceSchema>;
 export default function FinancePage() {
   const { modals, openModal, closeModal } = useUIStore();
 
+  const [invoicePage, setInvoicePage] = useState(1);
+  const [entryPage, setEntryPage] = useState(1);
+
   const { data: summary, isLoading: summaryLoading } = useFinanceSummary();
-  const { data: invoices, isLoading: invoicesLoading } = useInvoices();
-  const { data: entries, isLoading: entriesLoading } = useEntries();
+  const { data: invoicesData, isLoading: invoicesLoading } = useInvoices({ page: invoicePage, limit: 50 });
+  const { data: entriesData, isLoading: entriesLoading } = useEntries({ page: entryPage, limit: 50 });
+  const invoices = invoicesData?.items;
+  const entries = entriesData?.items;
 
   const createEntry = useCreateEntry();
   const createInvoice = useCreateInvoice();
   const updateInvoiceStatus = useUpdateInvoiceStatus();
-  const exportInvoices = useExportInvoices();
-  const exportEntries = useExportFinanceEntries();
-  const importEntries = useImportFinanceEntries();
-  const downloadPdf = useDownloadInvoicePdf();
 
   // ── Entry Form ──
   const entryForm = useForm<EntryForm>({
@@ -170,7 +167,7 @@ export default function FinancePage() {
         ) : (
           <>
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0 }}>
-              <Card className="card-premium-green">
+              <Card className="border-green-200 dark:border-green-900/50">
                 <CardContent className="p-5 flex items-center gap-4">
                   <div className="w-10 h-10 rounded-xl bg-green-500 flex items-center justify-center">
                     <TrendingUp className="w-5 h-5 text-white" />
@@ -183,7 +180,7 @@ export default function FinancePage() {
               </Card>
             </motion.div>
             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
-              <Card className="card-premium-red">
+              <Card className="border-red-200 dark:border-red-900/50">
                 <CardContent className="p-5 flex items-center gap-4">
                   <div className="w-10 h-10 rounded-xl bg-red-500 flex items-center justify-center">
                     <TrendingDown className="w-5 h-5 text-white" />
@@ -221,20 +218,7 @@ export default function FinancePage() {
             <TabsTrigger value="entries">Entries</TabsTrigger>
             <TabsTrigger value="invoices">Invoices</TabsTrigger>
           </TabsList>
-          <div className="flex gap-2 flex-wrap">
-            <ImportExportMenu
-              onExport={() => exportEntries.mutateAsync({})}
-              onImport={(f) => importEntries.mutateAsync(f)}
-              onSampleDownload={() => api.finance.entries.sample()}
-              exportLabel="Export Entries"
-              importLabel="Import Entries"
-              isExporting={exportEntries.isPending}
-              isImporting={importEntries.isPending}
-            />
-            <Button size="sm" variant="outline" onClick={() => exportInvoices.mutateAsync({})} disabled={exportInvoices.isPending}>
-              {exportInvoices.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <ArrowDownRight className="w-3.5 h-3.5 mr-1" />}
-              Export Invoices
-            </Button>
+          <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => openModal("createInvoice")}>
               <Plus className="w-4 h-4 mr-1" /> Invoice
             </Button>
@@ -248,7 +232,7 @@ export default function FinancePage() {
         <TabsContent value="entries" className="space-y-2">
           {entriesLoading ? (
             Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)
-          ) : entries?.length === 0 ? (
+          ) : entriesData?.total === 0 ? (
             <div className="text-center py-12 text-muted-foreground">No entries yet</div>
           ) : (
             entries?.map((entry, i) => (
@@ -279,13 +263,16 @@ export default function FinancePage() {
               </motion.div>
             ))
           )}
+          {entriesData && entriesData.pages > 1 && (
+            <Pagination page={entriesData.page} pages={entriesData.pages} total={entriesData.total} limit={entriesData.limit} onPageChange={setEntryPage} />
+          )}
         </TabsContent>
 
         {/* Invoices Tab */}
         <TabsContent value="invoices" className="space-y-2">
           {invoicesLoading ? (
             Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-lg" />)
-          ) : invoices?.length === 0 ? (
+          ) : invoicesData?.total === 0 ? (
             <div className="text-center py-12 text-muted-foreground">No invoices yet</div>
           ) : (
             invoices?.map((inv, i) => (
@@ -295,10 +282,11 @@ export default function FinancePage() {
                 index={i}
                 onStatusChange={(status) => updateInvoiceStatus.mutate({ id: inv.id, status })}
                 statusLoading={updateInvoiceStatus.isPending}
-                onDownloadPdf={() => downloadPdf.mutate({ id: inv.id, invoiceNumber: inv.invoice_number })}
-                pdfLoading={downloadPdf.isPending && downloadPdf.variables?.id === inv.id}
               />
             ))
+          )}
+          {invoicesData && invoicesData.pages > 1 && (
+            <Pagination page={invoicesData.page} pages={invoicesData.pages} total={invoicesData.total} limit={invoicesData.limit} onPageChange={setInvoicePage} />
           )}
         </TabsContent>
       </Tabs>
@@ -338,7 +326,7 @@ export default function FinancePage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label>Amount (₹)</Label>
-                  <Input type="number" step="0.01" {...entryForm.register("amount", { valueAsNumber: true })} />
+                  <Input type="number" step="0.01" max="99999999" {...entryForm.register("amount", { valueAsNumber: true })} />
                   {entryForm.formState.errors.amount && (
                     <p className="text-xs text-destructive">{entryForm.formState.errors.amount.message}</p>
                   )}
@@ -446,12 +434,12 @@ export default function FinancePage() {
                   type="button"
                   onClick={() => invoiceForm.setValue("is_gst", !isGst)}
                   className={cn(
-                    "w-10 h-6 rounded-full transition-colors relative overflow-hidden",
+                    "w-10 h-6 rounded-full transition-colors relative",
                     isGst ? "bg-primary" : "bg-muted-foreground/30"
                   )}
                 >
                   <span className={cn(
-                    "absolute top-1 left-0 w-4 h-4 rounded-full bg-white transition-transform",
+                    "absolute top-1 w-4 h-4 rounded-full bg-white transition-transform",
                     isGst ? "translate-x-5" : "translate-x-1"
                   )} />
                 </button>
@@ -608,15 +596,11 @@ function InvoiceRow({
   index,
   onStatusChange,
   statusLoading,
-  onDownloadPdf,
-  pdfLoading,
 }: {
   invoice: Invoice;
   index: number;
   onStatusChange: (status: string) => void;
   statusLoading: boolean;
-  onDownloadPdf: () => void;
-  pdfLoading: boolean;
 }) {
   const [showActions, setShowActions] = useState(false);
 
@@ -643,24 +627,22 @@ function InvoiceRow({
                 {invoice.due_date && ` · Due ${formatDate(invoice.due_date)}`}
               </p>
             </div>
-            <div className="text-right shrink-0 space-y-1">
-              <p className="text-sm font-bold">{formatCurrency(invoice.total)}</p>
-              <div className="flex items-center gap-2 justify-end">
-                <button
-                  onClick={onDownloadPdf}
-                  disabled={pdfLoading}
-                  className="text-[10px] text-slate-400 hover:text-primary flex items-center gap-0.5 transition-colors"
-                  title="Download PDF"
-                >
-                  {pdfLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-                  PDF
-                </button>
+            <div className="text-right shrink-0 flex items-center gap-2">
+              <button
+                className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                title="Download PDF invoice"
+                onClick={() => api.invoicePdf(invoice.id)}
+              >
+                <Download className="w-4 h-4" />
+              </button>
+              <div>
+                <p className="text-sm font-bold">{formatCurrency(invoice.total)}</p>
                 {invoice.status !== "paid" && invoice.status !== "cancelled" && (
                   <button
-                    className="text-[10px] text-primary hover:underline"
+                    className="text-[10px] text-primary hover:underline mt-0.5"
                     onClick={() => setShowActions(!showActions)}
                   >
-                    Status
+                    Change status
                   </button>
                 )}
               </div>

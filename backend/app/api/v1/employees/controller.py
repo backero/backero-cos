@@ -4,6 +4,7 @@ from fastapi import Depends, Query, UploadFile, File
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.schemas import PaginatedResponse
 from app.core.dependencies import AdminUser, CurrentUser
 from app.db.session import get_db
 from app.utils import excel as xl
@@ -37,13 +38,25 @@ async def create_department(
     return await service.create_department(db, body)
 
 
+async def update_department(
+    dept_id: str,
+    body: DepartmentCreate,
+    current_user: AdminUser = None,
+    db: AsyncSession = Depends(get_db),
+) -> DepartmentResponse:
+    return await service.update_department(db, dept_id, body)
+
+
 async def list_employees(
     department_id: Optional[str] = Query(None),
     is_active: Optional[bool] = Query(True),
+    search: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = None,
-) -> list[EmployeeResponse]:
-    return await service.list_employees(db, department_id, is_active)
+) -> PaginatedResponse[EmployeeResponse]:
+    return await service.list_employees(db, department_id, is_active, search, page, limit)
 
 
 async def create_employee(
@@ -51,7 +64,7 @@ async def create_employee(
     current_user: AdminUser = None,
     db: AsyncSession = Depends(get_db),
 ) -> EmployeeResponse:
-    return await service.create_employee(db, body)
+    return await service.create_employee(db, body, current_user.id, current_user.name)
 
 
 async def get_employee(

@@ -1,15 +1,14 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
-import { AlertTriangle, Bell, BellOff, CheckCheck, ClipboardList, Menu, MessageSquare, RefreshCw, Search } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { Bell, Box, ClipboardList, FileText, Menu, Moon, Search, Sun, User, X } from "lucide-react";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { useUIStore } from "@/stores/ui-store";
 import { useAuthStore } from "@/stores/auth-store";
-import { useMarkAllNotificationsRead, useMarkNotificationRead, useNotifications, useUnreadCount } from "@/hooks/use-queries";
 import { cn } from "@/lib/utils";
-import { formatDistanceToNow } from "date-fns";
-import { GlobalSearch } from "@/components/GlobalSearch";
+import { clientFetch } from "@/lib/api-client";
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -17,99 +16,88 @@ const PAGE_TITLES: Record<string, string> = {
   "/finance": "Finance",
   "/inventory": "Inventory",
   "/employees": "Employees",
+  "/payroll": "Payroll",
   "/production": "Production",
   "/reports": "Reports",
   "/roles": "Roles & Access",
   "/profile": "My Profile",
+  "/records": "Activity Records",
 };
 
-const NOTIF_TYPE_CONFIG: Record<string, { icon: React.ReactNode; bg: string; color: string }> = {
-  task_assigned: { icon: <ClipboardList className="w-3.5 h-3.5" />, bg: "bg-blue-100 dark:bg-blue-900/40", color: "text-blue-600 dark:text-blue-400" },
-  status_changed: { icon: <RefreshCw className="w-3.5 h-3.5" />, bg: "bg-violet-100 dark:bg-violet-900/40", color: "text-violet-600 dark:text-violet-400" },
-  comment_added: { icon: <MessageSquare className="w-3.5 h-3.5" />, bg: "bg-emerald-100 dark:bg-emerald-900/40", color: "text-emerald-600 dark:text-emerald-400" },
-  task_overdue: { icon: <AlertTriangle className="w-3.5 h-3.5" />, bg: "bg-red-100 dark:bg-red-900/40", color: "text-red-600 dark:text-red-400" },
-};
-
-function NotificationPanel({ onClose }: { onClose: () => void }) {
-  const { data: notifications = [] } = useNotifications();
-  const markRead = useMarkNotificationRead();
-  const markAll = useMarkAllNotificationsRead();
-
-  return (
-    <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-        <span className="text-sm font-semibold text-slate-800 dark:text-white">Notifications</span>
-        <button
-          onClick={() => markAll.mutate()}
-          className="text-xs text-primary hover:underline flex items-center gap-1"
-        >
-          <CheckCheck className="w-3 h-3" /> Mark all read
-        </button>
-      </div>
-      <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
-        {notifications.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 gap-2 text-slate-400">
-            <BellOff className="w-6 h-6" />
-            <p className="text-xs">No notifications</p>
-          </div>
-        ) : (
-          notifications.map((n) => {
-            const cfg = NOTIF_TYPE_CONFIG[n.type] ?? NOTIF_TYPE_CONFIG.task_assigned;
-            return (
-              <div
-                key={n.id}
-                onClick={() => !n.is_read && markRead.mutate(n.id)}
-                className={cn(
-                  "flex gap-3 px-4 py-3 cursor-pointer transition-colors",
-                  n.is_read ? "opacity-50" : "hover:bg-slate-50 dark:hover:bg-slate-800",
-                )}
-              >
-                <div className={cn("w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5", cfg.bg, cfg.color)}>
-                  {cfg.icon}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">{n.title}</p>
-                  <p className="text-xs text-slate-500 leading-relaxed mt-0.5">{n.message}</p>
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
-                  </p>
-                </div>
-                {!n.is_read && <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mt-1.5" />}
-              </div>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
+interface SearchResult {
+  type: string;
+  id: string;
+  title: string;
+  subtitle: string;
+  href: string;
 }
+
+const typeIcon: Record<string, React.ElementType> = {
+  task: ClipboardList,
+  employee: User,
+  product: Box,
+  invoice: FileText,
+};
 
 export function AppHeader() {
   const pathname = usePathname();
-  const { toggleSidebar } = useUIStore();
+  const router = useRouter();
+  const { toggleSidebar, notificationCount } = useUIStore();
   const { user } = useAuthStore();
-  const [showNotifs, setShowNotifs] = useState(false);
+  const { theme, setTheme } = useTheme();
   const [searchOpen, setSearchOpen] = useState(false);
-  const { data: countData } = useUnreadCount();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    if (searchQuery.length < 2) { setSearchResults([]); return; }
+    searchDebounceRef.current = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const data = await clientFetch<{ results: SearchResult[] }>(`/search/?q=${encodeURIComponent(searchQuery)}`);
+        setSearchResults(data.results);
+      } catch { setSearchResults([]); }
+      finally { setSearchLoading(false); }
+    }, 350);
+    return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
+  }, [searchQuery]);
+
+  const title = PAGE_TITLES[pathname] ?? "Backero COS";
+
+  useEffect(() => {
+    if (searchOpen) {
+      setTimeout(() => searchInputRef.current?.focus(), 50);
+    } else {
+      setSearchQuery("");
+    }
+  }, [searchOpen]);
+
+  // Close on Escape key
+  useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setSearchOpen((v) => !v);
-      }
+      if (e.key === "Escape") setSearchOpen(false);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-  const unreadCount = countData?.count ?? 0;
-
-  const title = PAGE_TITLES[pathname] ?? "Backero COS";
 
   return (
     <header className="h-16 border-b border-border bg-background/80 backdrop-blur-sm flex items-center justify-between px-6 shrink-0 sticky top-0 z-30">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={toggleSidebar} className="lg:hidden">
+      {/* Left: menu + title (hidden when search is open on mobile) */}
+      <div className={cn("flex items-center gap-4", searchOpen && "hidden sm:flex")}>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleSidebar}
+          className="lg:hidden"
+        >
           <Menu className="w-5 h-5" />
         </Button>
         <div>
@@ -120,44 +108,95 @@ export function AppHeader() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => setSearchOpen(true)}
-          className="hidden sm:flex items-center gap-2 h-8 px-3 text-xs text-slate-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
-        >
-          <Search className="w-3.5 h-3.5" />
-          <span>Search…</span>
-          <kbd className="ml-1 text-[10px] text-slate-400 font-mono">⌘K</kbd>
-        </button>
-        <Button variant="ghost" size="icon" className="sm:hidden" onClick={() => setSearchOpen(true)}>
-          <Search className="w-4 h-4" />
-        </Button>
-        <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
-        <div className="relative">
+      {/* Search bar (expands inline) */}
+      {searchOpen ? (
+        <div className="flex items-center gap-2 flex-1 sm:flex-initial sm:w-80 mx-2 relative">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search tasks, employees, products…"
+              className="w-full h-9 pl-9 pr-4 rounded-md border border-input bg-background text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            {/* Results dropdown */}
+            {(searchResults.length > 0 || searchLoading) && (
+              <div className="absolute top-10 left-0 right-0 bg-card border border-border rounded-lg shadow-xl z-50 overflow-hidden">
+                {searchLoading && (
+                  <div className="px-4 py-3 text-xs text-muted-foreground">Searching…</div>
+                )}
+                {!searchLoading && searchResults.map((r) => {
+                  const Icon = typeIcon[r.type] ?? Search;
+                  return (
+                    <button
+                      key={r.id}
+                      onClick={() => { router.push(r.href); setSearchOpen(false); setSearchQuery(""); }}
+                      className="w-full flex items-start gap-3 px-4 py-2.5 hover:bg-muted transition-colors text-left"
+                    >
+                      <Icon className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{r.title}</p>
+                        <p className="text-xs text-muted-foreground">{r.subtitle}</p>
+                      </div>
+                      <span className="ml-auto text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded capitalize">{r.type}</span>
+                    </button>
+                  );
+                })}
+                {!searchLoading && searchResults.length === 0 && searchQuery.length >= 2 && (
+                  <div className="px-4 py-3 text-xs text-muted-foreground">No results for "{searchQuery}"</div>
+                )}
+              </div>
+            )}
+          </div>
           <Button
             variant="ghost"
             size="icon"
-            className="relative text-muted-foreground"
-            onClick={() => setShowNotifs((v) => !v)}
+            className="shrink-0 text-muted-foreground hover:text-foreground"
+            onClick={() => { setSearchOpen(false); setSearchQuery(""); setSearchResults([]); }}
+            title="Close search"
           >
-            <Bell className="w-4 h-4" />
-            {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-primary rounded-full text-[9px] text-white flex items-center justify-center font-bold">
-                {unreadCount > 9 ? "9+" : unreadCount}
-              </span>
-            )}
+            <X className="w-4 h-4" />
           </Button>
-          {showNotifs && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setShowNotifs(false)} />
-              <div className="relative z-50">
-                <NotificationPanel onClose={() => setShowNotifs(false)} />
-              </div>
-            </>
-          )}
         </div>
+      ) : null}
+
+      <div className="flex items-center gap-2">
+        {!searchOpen && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-muted-foreground"
+            onClick={() => setSearchOpen(true)}
+            title="Search"
+          >
+            <Search className="w-4 h-4" />
+          </Button>
+        )}
+        {mounted && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-muted-foreground"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            title="Toggle theme"
+          >
+            {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </Button>
+        )}
+        <Button variant="ghost" size="icon" className="relative text-muted-foreground">
+          <Bell className="w-4 h-4" />
+          {notificationCount > 0 && (
+            <span className="absolute top-1 right-1 w-4 h-4 bg-primary rounded-full text-[9px] text-white flex items-center justify-center font-bold">
+              {notificationCount > 9 ? "9+" : notificationCount}
+            </span>
+          )}
+        </Button>
         <div className="ml-2 w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center">
-          <span className="text-primary text-xs font-bold">{user?.name?.[0]?.toUpperCase() ?? "U"}</span>
+          <span className="text-primary text-xs font-bold">
+            {user?.name?.[0]?.toUpperCase() ?? "U"}
+          </span>
         </div>
       </div>
     </header>

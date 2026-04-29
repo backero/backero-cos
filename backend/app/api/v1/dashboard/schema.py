@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from uuid import UUID
 
 
 class TaskStats(BaseModel):
@@ -7,6 +8,20 @@ class TaskStats(BaseModel):
     in_progress: int
     completed: int
     overdue: int
+
+
+class DepartmentProductivityItem(BaseModel):
+    department_id: UUID
+    department_name: str
+    total_tasks: int
+    pending_tasks: int
+    in_progress_tasks: int
+    completed_tasks: int
+    overdue_tasks: int
+    completion_rate: float
+    overdue_rate: float
+    average_completion_days: float
+    active_employees: int
 
 
 class KPIResponse(BaseModel):

@@ -1,3 +1,12 @@
+// ── Pagination ───────────────────────────────────────────────────────────────
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pages: number;
+  limit: number;
+}
+
 // ── Auth ────────────────────────────────────────────────────────────────────
 export type Module =
   | "dashboard"
@@ -7,7 +16,22 @@ export type Module =
   | "employees"
   | "production"
   | "reports"
-  | "roles";
+  | "roles"
+  | "records";
+
+// ── Activity Log ─────────────────────────────────────────────────────────────
+export interface ActivityLog {
+  id: string;
+  created_at: string;
+  actor_id?: string | null;
+  actor_name: string;
+  action: string;
+  entity_type: string;
+  entity_id?: string | null;
+  entity_name?: string | null;
+  description: string;
+  is_deleted: boolean;
+}
 
 export interface ModuleAccess {
   can_view: boolean;
@@ -104,24 +128,8 @@ export interface Attendance {
 }
 
 // ── Tasks ───────────────────────────────────────────────────────────────────
-export type TaskPriority = "low" | "medium" | "high" | "critical";
-export type TaskStatus = "todo" | "in_progress" | "review" | "done" | "overdue";
-
-export interface EmployeePreview {
-  id: string;
-  name: string;
-  avatar_url?: string | null;
-  designation?: string | null;
-}
-
-export interface TaskComment {
-  id: string;
-  task_id: string;
-  author_id: string;
-  content: string;
-  created_at: string;
-  author?: EmployeePreview | null;
-}
+export type TaskPriority = "low" | "medium" | "high" | "urgent";
+export type TaskStatus = "pending" | "in_progress" | "completed" | "overdue" | "pending_approval";
 
 export interface Task {
   id: string;
@@ -132,29 +140,37 @@ export interface Task {
   due_date?: string | null;
   completed_at?: string | null;
   assigned_to_id?: string | null;
+  assigned_to_name?: string | null;
   created_by_id?: string | null;
+  created_by_name?: string | null;
   department_id?: string | null;
+  department_name?: string | null;
   extension_requested: boolean;
   extension_reason?: string | null;
   extension_days: number | null;
+  completion_note?: string | null;
+  completion_submitted_at?: string | null;
   created_at: string;
-  updated_at: string;
-  assigned_to?: EmployeePreview | null;
-  created_by?: EmployeePreview | null;
-  comments: TaskComment[];
-  comments_count: number;
 }
 
-// ── Notifications ────────────────────────────────────────────────────────────
-export type NotificationType = "task_assigned" | "status_changed" | "comment_added" | "task_overdue";
-
-export interface Notification {
+export interface TaskComment {
   id: string;
-  type: NotificationType;
-  title: string;
+  task_id: string;
+  employee_id: string;
+  employee_name?: string | null;
+  employee_role?: string | null;
   message: string;
-  task_id?: string | null;
-  is_read: boolean;
+  created_at: string;
+}
+
+export interface TaskAttachment {
+  id: string;
+  task_id: string;
+  uploaded_by_id?: string | null;
+  uploaded_by_name?: string | null;
+  filename: string;
+  file_type: string;
+  file_size: number;
   created_at: string;
 }
 
@@ -268,7 +284,22 @@ export interface ProductionBatch {
   created_at: string;
 }
 
-export type PlatformName = "amazon" | "flipkart" | "meesho" | "website" | "offline";
+export type PlatformName =
+  | "amazon"
+  | "flipkart"
+  | "meesho"
+  | "website"
+  | "offline"
+  | "nykaa"
+  | "myntra"
+  | "ajio"
+  | "snapdeal"
+  | "jiomart"
+  | "zepto"
+  | "blinkit"
+  | "swiggy_instamart"
+  | "indiamart"
+  | "other";
 
 export interface PlatformOrder {
   id: string;

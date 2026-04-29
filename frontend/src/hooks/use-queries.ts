@@ -13,6 +13,7 @@ export const QK = {
   departments: ["departments"],
   attendance: (id: string, month?: number, year?: number) => ["attendance", id, month, year],
   tasks: (params?: object) => ["tasks", params],
+  taskAttachments: (taskId: string) => ["task-attachments", taskId],
   invoices: (params?: object) => ["invoices", params],
   entries: (params?: object) => ["entries", params],
   financeSummary: (params?: object) => ["finance-summary", params],
@@ -46,10 +47,11 @@ export function useMe() {
 }
 
 // ── Employees ─────────────────────────────────────────────────────────────────
-export function useEmployees(params?: { department_id?: string; is_active?: boolean }) {
+export function useEmployees(params?: { department_id?: string; is_active?: boolean; search?: string; page?: number; limit?: number }) {
   return useQuery({
     queryKey: QK.employees(params),
     queryFn: () => api.employees.list(params),
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -139,17 +141,24 @@ export function useCreateDepartment() {
   });
 }
 
+export function useUpdateDepartment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { name: string; description?: string } }) =>
+      api.employees.departments.update(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QK.departments });
+      toast.success("Department updated");
+    },
+  });
+}
+
 // ── Tasks ─────────────────────────────────────────────────────────────────────
-export function useTasks(params?: {
-  status?: string;
-  priority?: string;
-  assigned_to_id?: string;
-  department_id?: string;
-  search?: string;
-}) {
+export function useTasks(params?: { status?: string; priority?: string; assigned_to_id?: string; search?: string; page?: number; limit?: number }) {
   return useQuery({
     queryKey: QK.tasks(params),
     queryFn: () => api.tasks.list(params),
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -179,33 +188,6 @@ export function useUpdateTask() {
   });
 }
 
-export function useUpdateTaskStatus() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      api.tasks.updateStatus(id, status),
-    onMutate: async ({ id, status }) => {
-      // optimistic update
-      await qc.cancelQueries({ queryKey: ["tasks"] });
-      const prev = qc.getQueriesData({ queryKey: ["tasks"] });
-      qc.setQueriesData({ queryKey: ["tasks"] }, (old: unknown) => {
-        if (!Array.isArray(old)) return old;
-        return old.map((t: { id: string }) => t.id === id ? { ...t, status } : t);
-      });
-      return { prev };
-    },
-    onError: (_e, _v, ctx) => {
-      if (ctx?.prev) {
-        ctx.prev.forEach(([key, data]) => qc.setQueryData(key, data));
-      }
-      handleApiError(_e);
-    },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["tasks"] });
-    },
-  });
-}
-
 export function useCompleteTask() {
   const qc = useQueryClient();
   return useMutation({
@@ -213,7 +195,7 @@ export function useCompleteTask() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["tasks"] });
       qc.invalidateQueries({ queryKey: QK.kpis });
-      toast.success("Task marked as done");
+      toast.success("Task marked as complete");
     },
     onError: (e) => handleApiError(e),
   });
@@ -231,13 +213,59 @@ export function useDeleteTask() {
   });
 }
 
-export function useAddComment() {
+export function useSubmitCompletion() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ taskId, content }: { taskId: string; content: string }) =>
-      api.tasks.addComment(taskId, content),
+    mutationFn: ({ id, note }: { id: string; note?: string }) =>
+      api.tasks.submitCompletion(id, note),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["tasks"] });
+      toast.success("Submitted for approval");
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+
+export function useApproveTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.tasks.approve(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: QK.kpis });
+      toast.success("Task approved and completed");
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+
+export function useRejectTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, note }: { id: string; note?: string }) =>
+      api.tasks.reject(id, note),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      toast.success("Task sent back for rework");
+    },
+    onError: (e) => handleApiError(e),
+  });
+}
+
+export function useTaskComments(taskId: string | null) {
+  return useQuery({
+    queryKey: ["task-comments", taskId],
+    queryFn: () => api.tasks.comments.list(taskId!),
+    enabled: !!taskId,
+  });
+}
+
+export function useAddTaskComment(taskId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (message: string) => api.tasks.comments.add(taskId!, message),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["task-comments", taskId] });
     },
     onError: (e) => handleApiError(e),
   });
@@ -251,50 +279,32 @@ export function useComplianceTasks() {
   });
 }
 
-// ── Notifications ─────────────────────────────────────────────────────────────
-export function useNotifications(unread_only = false) {
+export function useTaskAttachments(taskId: string | null) {
   return useQuery({
-    queryKey: ["notifications", { unread_only }],
-    queryFn: () => api.notifications.list(unread_only),
-    refetchInterval: 30_000,
+    queryKey: QK.taskAttachments(taskId!),
+    queryFn: () => api.tasks.attachments.list(taskId!),
+    enabled: !!taskId,
   });
 }
 
-export function useUnreadCount() {
-  return useQuery({
-    queryKey: ["notifications-count"],
-    queryFn: () => api.notifications.unreadCount(),
-    refetchInterval: 30_000,
-  });
-}
-
-export function useMarkNotificationRead() {
+export function useUploadTaskAttachment(taskId: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.notifications.markRead(id),
+    mutationFn: (file: File) => api.tasks.attachments.upload(taskId!, file),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["notifications"] });
-      qc.invalidateQueries({ queryKey: ["notifications-count"] });
+      qc.invalidateQueries({ queryKey: QK.taskAttachments(taskId!) });
+      toast.success("File uploaded");
     },
-  });
-}
-
-export function useMarkAllNotificationsRead() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => api.notifications.markAllRead(),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["notifications"] });
-      qc.invalidateQueries({ queryKey: ["notifications-count"] });
-    },
+    onError: (e) => handleApiError(e, "Upload failed"),
   });
 }
 
 // ── Finance ───────────────────────────────────────────────────────────────────
-export function useInvoices(params?: { status?: string; from_date?: string; to_date?: string }) {
+export function useInvoices(params?: { status?: string; from_date?: string; to_date?: string; search?: string; page?: number; limit?: number }) {
   return useQuery({
     queryKey: QK.invoices(params),
     queryFn: () => api.finance.invoices.list(params),
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -311,10 +321,11 @@ export function useCreateInvoice() {
   });
 }
 
-export function useEntries(params?: { type?: string; from_date?: string; to_date?: string }) {
+export function useEntries(params?: { type?: string; from_date?: string; to_date?: string; search?: string; page?: number; limit?: number }) {
   return useQuery({
     queryKey: QK.entries(params),
     queryFn: () => api.finance.entries.list(params),
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -354,10 +365,11 @@ export function useFinanceSummary(params?: { from_date?: string; to_date?: strin
 }
 
 // ── Inventory ─────────────────────────────────────────────────────────────────
-export function useProducts(params?: { category?: string; low_stock?: boolean }) {
+export function useProducts(params?: { category?: string; low_stock?: boolean; search?: string; page?: number; limit?: number }) {
   return useQuery({
     queryKey: QK.products(params),
     queryFn: () => api.inventory.products.list(params),
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -470,10 +482,14 @@ export function usePlatformOrders(params?: {
   platform?: string;
   from_date?: string;
   to_date?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
 }) {
   return useQuery({
     queryKey: QK.platformOrders(params),
     queryFn: () => api.inventory.platformOrders.list(params),
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -493,95 +509,6 @@ export function useCreatePlatformOrder() {
       qc.invalidateQueries({ queryKey: ["platform-summary"] });
       toast.success("Order logged");
     },
-    onError: (e) => handleApiError(e),
-  });
-}
-
-// ── Import / Export helpers ───────────────────────────────────────────────────
-
-type ImportResult = { created: number; skipped: number; errors: string[] };
-
-export function useExportProducts() {
-  return useMutation({ mutationFn: () => api.inventory.products.export(), onError: (e) => handleApiError(e) });
-}
-export function useImportProducts() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (file: File) => api.inventory.products.import(file),
-    onSuccess: (r: ImportResult) => {
-      qc.invalidateQueries({ queryKey: ["products"] });
-      toast.success(`Imported ${r.created} products${r.skipped ? `, skipped ${r.skipped}` : ""}`);
-    },
-    onError: (e) => handleApiError(e),
-  });
-}
-export function useExportRawMaterials() {
-  return useMutation({ mutationFn: () => api.inventory.rawMaterials.export(), onError: (e) => handleApiError(e) });
-}
-export function useImportRawMaterials() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (file: File) => api.inventory.rawMaterials.import(file),
-    onSuccess: (r: ImportResult) => {
-      qc.invalidateQueries({ queryKey: QK.rawMaterials });
-      toast.success(`Imported ${r.created} materials${r.skipped ? `, skipped ${r.skipped}` : ""}`);
-    },
-    onError: (e) => handleApiError(e),
-  });
-}
-export function useExportPlatformOrders() {
-  return useMutation({ mutationFn: () => api.inventory.platformOrders.export(), onError: (e) => handleApiError(e) });
-}
-export function useImportPlatformOrders() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (file: File) => api.inventory.platformOrders.import(file),
-    onSuccess: (r: ImportResult) => {
-      qc.invalidateQueries({ queryKey: ["platform-orders"] });
-      toast.success(`Imported ${r.created} orders${r.skipped ? `, skipped ${r.skipped}` : ""}`);
-    },
-    onError: (e) => handleApiError(e),
-  });
-}
-export function useExportFinanceEntries() {
-  return useMutation({ mutationFn: (params?: { type?: string }) => api.finance.entries.export(params), onError: (e) => handleApiError(e) });
-}
-export function useImportFinanceEntries() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (file: File) => api.finance.entries.import(file),
-    onSuccess: (r: ImportResult) => {
-      qc.invalidateQueries({ queryKey: ["entries"] });
-      qc.invalidateQueries({ queryKey: ["finance-summary"] });
-      toast.success(`Imported ${r.created} entries${r.skipped ? `, skipped ${r.skipped}` : ""}`);
-    },
-    onError: (e) => handleApiError(e),
-  });
-}
-export function useExportInvoices() {
-  return useMutation({ mutationFn: (params?: { status?: string }) => api.finance.invoices.export(params), onError: (e) => handleApiError(e) });
-}
-export function useExportEmployees() {
-  return useMutation({ mutationFn: () => api.employees.export(), onError: (e) => handleApiError(e) });
-}
-export function useImportEmployees() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (file: File) => api.employees.import(file),
-    onSuccess: (r: ImportResult) => {
-      qc.invalidateQueries({ queryKey: ["employees"] });
-      toast.success(`Imported ${r.created} employees${r.skipped ? `, skipped ${r.skipped}` : ""}`);
-    },
-    onError: (e) => handleApiError(e),
-  });
-}
-export function useExportTasks() {
-  return useMutation({ mutationFn: (params?: { status?: string; priority?: string }) => api.tasks.export(params), onError: (e) => handleApiError(e) });
-}
-export function useDownloadInvoicePdf() {
-  return useMutation({
-    mutationFn: ({ id, invoiceNumber }: { id: string; invoiceNumber: string }) =>
-      api.finance.invoices.downloadPdf(id, invoiceNumber),
     onError: (e) => handleApiError(e),
   });
 }

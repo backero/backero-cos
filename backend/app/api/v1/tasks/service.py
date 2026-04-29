@@ -3,53 +3,32 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.employee import Employee
-from app.models.task import ComplianceTask, Notification, Task, TaskComment
-from app.utils.notifications import send_whatsapp_message
+from app.api.v1.schemas import PaginatedResponse
 
+from app.utils.notifications import (
+    send_whatsapp_message,
+    build_task_assigned_message,
+    build_task_submitted_message,
+    build_task_approved_message,
+    build_task_rejected_message,
+)
+from .model import ComplianceTask, Task
+from app.models.task import TaskComment
 from .schema import (
+    CompletionSubmit,
     ComplianceTaskResponse,
     ExtensionRequest,
     TaskCommentCreate,
     TaskCommentResponse,
     TaskCreate,
+    TaskReject,
     TaskResponse,
-    TaskStatusUpdate,
     TaskUpdate,
 )
-
-VALID_STATUSES = {"todo", "in_progress", "review", "done", "overdue"}
-VALID_PRIORITIES = {"low", "medium", "high", "critical"}
-
-
-def _task_query():
-    return select(Task).options(
-        selectinload(Task.assigned_to),
-        selectinload(Task.created_by),
-        selectinload(Task.comments).selectinload(TaskComment.author),
-    )
-
-
-async def _create_notification(
-    db: AsyncSession,
-    recipient_id: uuid.UUID,
-    type: str,
-    title: str,
-    message: str,
-    task_id: Optional[uuid.UUID] = None,
-):
-    notif = Notification(
-        recipient_id=recipient_id,
-        type=type,
-        title=title,
-        message=message,
-        task_id=task_id,
-    )
-    db.add(notif)
 
 
 async def list_tasks(
@@ -61,40 +40,48 @@ async def list_tasks(
     assigned_to_id: Optional[str] = None,
     department_id: Optional[str] = None,
     search: Optional[str] = None,
-) -> list[TaskResponse]:
-    query = _task_query()
+    page: int = 1,
+    limit: int = 50,
+) -> PaginatedResponse[TaskResponse]:
+    query = select(Task).options(selectinload(Task.assigned_to), selectinload(Task.department), selectinload(Task.created_by))
     if status:
-        # support legacy 'pending' → 'todo', 'completed' → 'done'
-        mapped = {"pending": "todo", "completed": "done"}.get(status, status)
-        query = query.where(Task.status == mapped)
+        query = query.where(Task.status == status)
     if priority:
         query = query.where(Task.priority == priority)
     if assigned_to_id:
         query = query.where(Task.assigned_to_id == uuid.UUID(assigned_to_id))
-    elif current_user_role == "employee":
-        query = query.where(Task.assigned_to_id == current_user_id)
+    else:
+        role_lower = current_user_role.lower()
+        is_super_admin_or_admin = role_lower == "super admin" or role_lower == "admin"
+        is_manager = "manager" in role_lower
+        if is_super_admin_or_admin:
+            pass
+        elif is_manager:
+            query = query.where(
+                or_(Task.created_by_id == current_user_id, Task.assigned_to_id == current_user_id)
+            )
+        else:
+            query = query.where(Task.assigned_to_id == current_user_id)
     if department_id:
         query = query.where(Task.department_id == uuid.UUID(department_id))
     if search:
-        query = query.where(Task.title.ilike(f"%{search}%"))
+        term = f"%{search}%"
+        query = query.where(Task.title.ilike(term))
+
+    count_result = await db.execute(select(func.count()).select_from(query.subquery()))
+    total = count_result.scalar_one()
+
     query = query.order_by(Task.due_date.asc().nullslast(), Task.created_at.desc())
+    query = query.offset((page - 1) * limit).limit(limit)
     result = await db.execute(query)
-    return [TaskResponse.model_validate(t) for t in result.scalars()]
-
-
-async def get_task(db: AsyncSession, task_id: str) -> TaskResponse:
-    result = await db.execute(
-        _task_query().where(Task.id == uuid.UUID(task_id))
-    )
-    task = result.scalar_one_or_none()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    return TaskResponse.model_validate(task)
+    items = [TaskResponse.model_validate(t) for t in result.scalars()]
+    return PaginatedResponse.build(items, total, page, limit)
 
 
 async def create_task(
-    db: AsyncSession, body: TaskCreate, created_by_id: uuid.UUID
+    db: AsyncSession, body: TaskCreate, created_by_id: uuid.UUID, creator_name: str = "Manager"
 ) -> TaskResponse:
+    from app.utils.activity import log as activity_log
     task = Task(
         title=body.title,
         description=body.description,
@@ -103,205 +90,466 @@ async def create_task(
         assigned_to_id=uuid.UUID(body.assigned_to_id) if body.assigned_to_id else None,
         department_id=uuid.UUID(body.department_id) if body.department_id else None,
         created_by_id=created_by_id,
-        status="todo",
+        status="pending",
     )
     db.add(task)
     await db.flush()
+    await _notify_task_assignment(db, task)
+    await db.refresh(task, ["assigned_to", "department", "created_by"])
 
-    # notify assignee
-    if task.assigned_to_id and task.assigned_to_id != created_by_id:
-        reporter_result = await db.execute(
-            select(Employee).where(Employee.id == created_by_id)
+    assignee = task.assigned_to.name if task.assigned_to else "Unassigned"
+    await activity_log(
+        db,
+        actor_id=created_by_id,
+        actor_name=creator_name,
+        action="create",
+        entity_type="task",
+        entity_id=str(task.id),
+        entity_name=task.title,
+        description=f"{creator_name} created task '{task.title}' and assigned it to {assignee}",
+    )
+    return TaskResponse.model_validate(task)
+
+
+async def _get_employee(db: AsyncSession, emp_id: uuid.UUID):
+    from app.models.employee import Employee
+    result = await db.execute(select(Employee).where(Employee.id == emp_id))
+    return result.scalar_one_or_none()
+
+
+async def _get_dept_manager(db: AsyncSession, department_id: uuid.UUID):
+    """Return the first active employee in the department whose role name contains 'manager'."""
+    from app.models.employee import Employee
+    result = await db.execute(
+        select(Employee).where(
+            Employee.department_id == department_id,
+            Employee.is_active == True,
         )
-        reporter = reporter_result.scalar_one_or_none()
-        reporter_name = reporter.name if reporter else "Someone"
-        await _create_notification(
-            db,
-            recipient_id=task.assigned_to_id,
-            type="task_assigned",
-            title="New Task Assigned",
-            message=f'{reporter_name} assigned you "{task.title}"',
-            task_id=task.id,
+    )
+    employees = result.scalars().all()
+    for emp in employees:
+        if "manager" in (emp.role or "").lower():
+            return emp
+    return None
+
+
+async def _notify_task_assignment(db: AsyncSession, task: Task) -> None:
+    if not task.assigned_to_id:
+        return
+
+    emp = await _get_employee(db, task.assigned_to_id)
+    if not emp:
+        return
+
+    # Resolve creator name
+    creator_name = "Manager"
+    creator = None
+    if task.created_by_id:
+        creator = await _get_employee(db, task.created_by_id)
+        if creator:
+            creator_name = creator.name
+
+    # Rich message to the assignee
+    msg_to_assignee = build_task_assigned_message(
+        task_title=task.title,
+        priority=task.priority,
+        due_date=task.due_date,
+        assigned_by=creator_name,
+        description=task.description,
+    )
+    await send_whatsapp_message(emp.phone, msg_to_assignee)
+    notified_phones = {emp.phone}
+
+    # Notify task creator (confirmation)
+    if creator and creator.phone not in notified_phones:
+        await send_whatsapp_message(
+            creator.phone,
+            f"📋 Task *{task.title}* has been assigned to *{emp.name}*.\nPriority: {task.priority.capitalize()} | Due: {task.due_date.strftime('%d %b %Y').lstrip('0') if task.due_date else 'No deadline'}",
         )
-        # WhatsApp alert to assignee
-        assignee_result = await db.execute(select(Employee).where(Employee.id == task.assigned_to_id))
-        assignee = assignee_result.scalar_one_or_none()
-        if assignee:
-            due_str = task.due_date.strftime("%d %b %Y") if task.due_date else "No due date"
+        notified_phones.add(creator.phone)
+
+    # Notify department manager
+    if emp.department_id:
+        dept_manager = await _get_dept_manager(db, emp.department_id)
+        if dept_manager and dept_manager.phone not in notified_phones:
             await send_whatsapp_message(
-                assignee.phone,
-                f"Hi {assignee.name}, {reporter_name} assigned you a new task: '{task.title}'. Due: {due_str}.",
-                template_name="task_assigned",
+                dept_manager.phone,
+                f"📋 Task *{task.title}* assigned to *{emp.name}* in your department.\nPriority: {task.priority.capitalize()} | Due: {task.due_date.strftime('%d %b %Y').lstrip('0') if task.due_date else 'No deadline'}",
             )
-
-    await db.refresh(task)
-    result = await db.execute(_task_query().where(Task.id == task.id))
-    return TaskResponse.model_validate(result.scalar_one())
+            notified_phones.add(dept_manager.phone)
 
 
 async def update_task(
-    db: AsyncSession, task_id: str, body: TaskUpdate, current_user_id: uuid.UUID
+    db: AsyncSession,
+    task_id: str,
+    body: TaskUpdate,
+    current_user_id: uuid.UUID,
+    current_user_role: str,
 ) -> TaskResponse:
-    result = await db.execute(_task_query().where(Task.id == uuid.UUID(task_id)))
+    result = await db.execute(select(Task).where(Task.id == uuid.UUID(task_id)))
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    old_status = task.status
-    old_assignee = task.assigned_to_id
+    role_lower = current_user_role.lower()
+    is_manager_or_above = "manager" in role_lower or "admin" in role_lower
+
+    if not is_manager_or_above:
+        # Employees can only update their own assigned task's status, and not to "completed"
+        if task.assigned_to_id != current_user_id:
+            raise HTTPException(status_code=403, detail="You can only update tasks assigned to you")
+        allowed = body.model_dump(include={"status"}, exclude_none=True)
+        if "status" in allowed and allowed["status"] == "completed":
+            raise HTTPException(status_code=403, detail="Use submit-completion to request task completion")
+        body = TaskUpdate(**allowed)
+
+    original_assigned_to_id = task.assigned_to_id
+    assigned_changed = False
 
     for field, value in body.model_dump(exclude_none=True).items():
-        if field == "assigned_to_id" and value:
-            value = uuid.UUID(value)
+        if field == "assigned_to_id":
+            if value:
+                value = uuid.UUID(value)
+            if value != original_assigned_to_id:
+                assigned_changed = True
         setattr(task, field, value)
 
-    # if status changed to done
-    if body.status == "done" and old_status != "done":
-        task.completed_at = datetime.now(timezone.utc)
+    if assigned_changed and task.assigned_to_id:
+        await _notify_task_assignment(db, task)
 
-    await db.flush()
-
-    # notify on reassignment
-    if body.assigned_to_id and task.assigned_to_id != old_assignee:
-        reporter_result = await db.execute(
-            select(Employee).where(Employee.id == current_user_id)
-        )
-        reporter = reporter_result.scalar_one_or_none()
-        reporter_name = reporter.name if reporter else "Someone"
-        await _create_notification(
-            db,
-            recipient_id=task.assigned_to_id,
-            type="task_assigned",
-            title="Task Reassigned",
-            message=f'{reporter_name} assigned you "{task.title}"',
-            task_id=task.id,
-        )
-        # WhatsApp alert on reassignment
-        assignee_result = await db.execute(select(Employee).where(Employee.id == task.assigned_to_id))
-        assignee = assignee_result.scalar_one_or_none()
-        if assignee:
-            due_str = task.due_date.strftime("%d %b %Y") if task.due_date else "No due date"
-            await send_whatsapp_message(
-                assignee.phone,
-                f"Hi {assignee.name}, you have been assigned the task: '{task.title}'. Due: {due_str}.",
-                template_name="task_assigned",
-            )
-
-    # notify reporter on status change
-    if body.status and body.status != old_status and task.created_by_id and task.created_by_id != current_user_id:
-        await _create_notification(
-            db,
-            recipient_id=task.created_by_id,
-            type="status_changed",
-            title="Task Status Updated",
-            message=f'"{task.title}" moved to {body.status.replace("_", " ").title()}',
-            task_id=task.id,
-        )
-
-    result = await db.execute(_task_query().where(Task.id == task.id))
-    return TaskResponse.model_validate(result.scalar_one())
-
-
-async def update_task_status(
-    db: AsyncSession, task_id: str, body: TaskStatusUpdate, current_user_id: uuid.UUID
-) -> TaskResponse:
-    mapped_status = body.status
-    if mapped_status not in VALID_STATUSES:
-        raise HTTPException(status_code=400, detail=f"Invalid status: {body.status}")
-    return await update_task(
-        db, task_id, TaskUpdate(status=mapped_status), current_user_id
-    )
+    await db.refresh(task, ["assigned_to", "department", "created_by"])
+    return TaskResponse.model_validate(task)
 
 
 async def complete_task(db: AsyncSession, task_id: str) -> TaskResponse:
-    result = await db.execute(_task_query().where(Task.id == uuid.UUID(task_id)))
+    result = await db.execute(select(Task).where(Task.id == uuid.UUID(task_id)))
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    task.status = "done"
+    task.status = "completed"
     task.completed_at = datetime.now(timezone.utc)
-    result = await db.execute(_task_query().where(Task.id == task.id))
-    return TaskResponse.model_validate(result.scalar_one())
+    await db.refresh(task, ["assigned_to", "department", "created_by"])
+    return TaskResponse.model_validate(task)
 
 
 async def request_extension(
     db: AsyncSession, task_id: str, body: ExtensionRequest
 ) -> TaskResponse:
-    result = await db.execute(_task_query().where(Task.id == uuid.UUID(task_id)))
+    result = await db.execute(select(Task).where(Task.id == uuid.UUID(task_id)))
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     task.extension_requested = True
     task.extension_reason = body.reason
     task.extension_days = body.days
-    result = await db.execute(_task_query().where(Task.id == task.id))
-    return TaskResponse.model_validate(result.scalar_one())
+    await db.refresh(task, ["assigned_to", "department", "created_by"])
+    await db.refresh(task, ["assigned_to", "department", "created_by"])
+    return TaskResponse.model_validate(task)
 
 
-async def delete_task(db: AsyncSession, task_id: str) -> None:
+async def submit_completion(
+    db: AsyncSession, task_id: str, body: CompletionSubmit, current_user_id: uuid.UUID
+) -> TaskResponse:
     result = await db.execute(select(Task).where(Task.id == uuid.UUID(task_id)))
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    if task.assigned_to_id != current_user_id:
+        raise HTTPException(status_code=403, detail="Only the assigned employee can submit completion")
+
+    task.status = "pending_approval"
+    task.completion_note = body.note
+    task.completion_submitted_at = datetime.now(timezone.utc)
+    await db.flush()
+
+    # Notify task creator / manager
+    notified_phones: set[str] = set()
+    emp = await _get_employee(db, current_user_id)
+    emp_name = emp.name if emp else "Employee"
+
+    if task.created_by_id and task.created_by_id != current_user_id:
+        creator = await _get_employee(db, task.created_by_id)
+        if creator:
+            await send_whatsapp_message(
+                creator.phone,
+                build_task_submitted_message(task.title, emp_name, body.note),
+            )
+            notified_phones.add(creator.phone)
+
+    # Also notify department manager if different
+    if emp and emp.department_id:
+        dept_manager = await _get_dept_manager(db, emp.department_id)
+        if dept_manager and dept_manager.phone not in notified_phones:
+            await send_whatsapp_message(
+                dept_manager.phone,
+                build_task_submitted_message(task.title, emp_name, body.note),
+            )
+
+    await db.refresh(task, ["assigned_to", "department", "created_by"])
+    return TaskResponse.model_validate(task)
+
+
+async def approve_task(
+    db: AsyncSession, task_id: str, current_user_id: uuid.UUID, current_user_role: str
+) -> TaskResponse:
+    result = await db.execute(select(Task).where(Task.id == uuid.UUID(task_id)))
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    role_lower = current_user_role.lower()
+    is_admin_or_above = role_lower in ("admin", "super admin")
+    is_creator = task.created_by_id == current_user_id
+    if not is_creator and not is_admin_or_above:
+        raise HTTPException(status_code=403, detail="Only the task creator or an admin can approve tasks")
+
+    task.status = "completed"
+    task.completed_at = datetime.now(timezone.utc)
+    await db.flush()
+
+    if task.assigned_to_id:
+        emp = await _get_employee(db, task.assigned_to_id)
+        if emp:
+            approver = await _get_employee(db, current_user_id)
+            approver_name = approver.name if approver else "Manager"
+            await send_whatsapp_message(emp.phone, build_task_approved_message(task.title, approver_name))
+
+    from app.utils.activity import log as activity_log
+    await activity_log(
+        db, actor_id=current_user_id, actor_name=current_user_role,
+        action="approve", entity_type="task", entity_id=task_id,
+        entity_name=task.title,
+        description=f"Task '{task.title}' was approved and marked completed",
+    )
+    await db.refresh(task, ["assigned_to", "department", "created_by"])
+    return TaskResponse.model_validate(task)
+
+
+async def reject_task(
+    db: AsyncSession, task_id: str, body: TaskReject, current_user_id: uuid.UUID, current_user_role: str
+) -> TaskResponse:
+    result = await db.execute(select(Task).where(Task.id == uuid.UUID(task_id)))
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    role_lower = current_user_role.lower()
+    is_admin_or_above = role_lower in ("admin", "super admin")
+    is_creator = task.created_by_id == current_user_id
+    if not is_creator and not is_admin_or_above:
+        raise HTTPException(status_code=403, detail="Only the task creator or an admin can reject tasks")
+
+    task.status = "in_progress"
+    task.completion_note = None
+    task.completion_submitted_at = None
+    await db.flush()
+
+    if task.assigned_to_id:
+        emp = await _get_employee(db, task.assigned_to_id)
+        if emp:
+            await send_whatsapp_message(emp.phone, build_task_rejected_message(task.title, body.note))
+
+    await db.refresh(task, ["assigned_to", "department", "created_by"])
+    return TaskResponse.model_validate(task)
+
+
+async def delete_task(db: AsyncSession, task_id: str, actor_id: uuid.UUID | None = None, actor_name: str = "Manager") -> None:
+    from app.utils.activity import log as activity_log
+    result = await db.execute(select(Task).where(Task.id == uuid.UUID(task_id)))
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    snapshot = {
+        "id": str(task.id),
+        "title": task.title,
+        "description": task.description,
+        "priority": task.priority,
+        "status": task.status,
+        "due_date": task.due_date.isoformat() if task.due_date else None,
+        "assigned_to_id": str(task.assigned_to_id) if task.assigned_to_id else None,
+        "created_by_id": str(task.created_by_id) if task.created_by_id else None,
+        "department_id": str(task.department_id) if task.department_id else None,
+    }
+    await activity_log(
+        db,
+        actor_id=actor_id,
+        actor_name=actor_name,
+        action="delete",
+        entity_type="task",
+        entity_id=task_id,
+        entity_name=task.title,
+        description=f"{actor_name} deleted task '{task.title}'",
+        deleted_data=snapshot,
+        is_deleted=True,
+    )
     await db.delete(task)
 
 
-# ── Comments ─────────────────────────────────────────────────────────────────
+async def list_compliance_tasks(db: AsyncSession) -> list[ComplianceTaskResponse]:
+    result = await db.execute(select(ComplianceTask).order_by(ComplianceTask.due_date.asc()))
+    return [ComplianceTaskResponse.model_validate(t) for t in result.scalars()]
+
 
 async def add_comment(
-    db: AsyncSession, task_id: str, body: TaskCommentCreate, author_id: uuid.UUID
+    db: AsyncSession,
+    task_id: str,
+    body: TaskCommentCreate,
+    current_user_id: uuid.UUID,
+    current_user_role: str,
 ) -> TaskCommentResponse:
     result = await db.execute(select(Task).where(Task.id == uuid.UUID(task_id)))
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    role_lower = current_user_role.lower()
+    is_manager_or_above = "manager" in role_lower or "admin" in role_lower
+    if not is_manager_or_above and task.assigned_to_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You can only comment on your own tasks")
+
     comment = TaskComment(
         task_id=uuid.UUID(task_id),
-        author_id=author_id,
-        content=body.content,
+        employee_id=current_user_id,
+        message=body.message,
     )
     db.add(comment)
     await db.flush()
+    await db.refresh(comment, ["employee"])
+    await db.commit()
 
-    # notify task owner
-    if task.created_by_id and task.created_by_id != author_id:
-        author_result = await db.execute(
-            select(Employee).where(Employee.id == author_id)
-        )
-        author = author_result.scalar_one_or_none()
-        await _create_notification(
-            db,
-            recipient_id=task.created_by_id,
-            type="comment_added",
-            title="New Comment",
-            message=f'{author.name if author else "Someone"} commented on "{task.title}"',
-            task_id=task.id,
-        )
-    # notify assignee if different from author and reporter
-    if task.assigned_to_id and task.assigned_to_id != author_id and task.assigned_to_id != task.created_by_id:
-        author_result = await db.execute(
-            select(Employee).where(Employee.id == author_id)
-        )
-        author = author_result.scalar_one_or_none()
-        await _create_notification(
-            db,
-            recipient_id=task.assigned_to_id,
-            type="comment_added",
-            title="New Comment",
-            message=f'{author.name if author else "Someone"} commented on "{task.title}"',
-            task_id=task.id,
-        )
+    # Notify manager/creator about the update if posted by employee
+    if not is_manager_or_above and task.created_by_id and task.created_by_id != current_user_id:
+        poster = await _get_employee(db, current_user_id)
+        creator = await _get_employee(db, task.created_by_id)
+        if creator and poster:
+            await send_whatsapp_message(
+                creator.phone,
+                f"Update on task '{task.title}' from {poster.name}: {body.message}",
+            )
 
-    await db.refresh(comment)
-    result2 = await db.execute(
+    return TaskCommentResponse.model_validate(comment)
+
+
+async def list_comments(
+    db: AsyncSession,
+    task_id: str,
+    current_user_id: uuid.UUID,
+    current_user_role: str,
+) -> list[TaskCommentResponse]:
+    from sqlalchemy.orm import selectinload as sil
+    result = await db.execute(select(Task).where(Task.id == uuid.UUID(task_id)))
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    role_lower = current_user_role.lower()
+    is_manager_or_above = "manager" in role_lower or "admin" in role_lower
+    if not is_manager_or_above and task.assigned_to_id != current_user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    comments_result = await db.execute(
         select(TaskComment)
-        .options(selectinload(TaskComment.author))
-        .where(TaskComment.id == comment.id)
+        .options(sil(TaskComment.employee))
+        .where(TaskComment.task_id == uuid.UUID(task_id))
+        .order_by(TaskComment.created_at.asc())
     )
-    return TaskCommentResponse.model_validate(result2.scalar_one())
+    return [TaskCommentResponse.model_validate(c) for c in comments_result.scalars()]
 
 
-async def list_compliance_tasks(db: AsyncSession) -> list[ComplianceTaskResponse]:
-    result = await db.execute(select(ComplianceTask).order_by(ComplianceTask.due_date.asc()))
-    return [ComplianceTaskResponse.model_validate(t) for t in result.scalars()]
+# ── Attachments ───────────────────────────────────────────────────────────────
+
+ALLOWED_MIME_TYPES = {
+    "image/jpeg", "image/png", "image/gif", "image/webp",
+    "video/mp4", "video/quicktime", "video/webm",
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+}
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
+
+
+async def upload_attachment(
+    db: AsyncSession,
+    task_id: str,
+    file,  # UploadFile
+    current_user_id: uuid.UUID,
+) -> "TaskAttachmentResponse":
+    import os, io
+    from fastapi import UploadFile
+    from app.models.task import TaskAttachment
+    from .schema import TaskAttachmentResponse
+
+    result = await db.execute(select(Task).where(Task.id == uuid.UUID(task_id)))
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    content_type = file.content_type or "application/octet-stream"
+    if content_type not in ALLOWED_MIME_TYPES:
+        raise HTTPException(status_code=400, detail=f"File type '{content_type}' is not allowed")
+
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="File too large (max 25 MB)")
+
+    # Store file on disk
+    upload_dir = os.path.join(os.path.dirname(__file__), "../../../../uploads", "task_attachments")
+    os.makedirs(upload_dir, exist_ok=True)
+    ext = os.path.splitext(file.filename or "file")[1]
+    stored_name = f"{uuid.uuid4()}{ext}"
+    dest = os.path.join(upload_dir, stored_name)
+    with open(dest, "wb") as f:
+        f.write(data)
+
+    attachment = TaskAttachment(
+        task_id=uuid.UUID(task_id),
+        uploaded_by_id=current_user_id,
+        filename=file.filename or stored_name,
+        stored_filename=stored_name,
+        file_type=content_type,
+        file_size=len(data),
+    )
+    db.add(attachment)
+    await db.flush()
+    await db.refresh(attachment, ["uploaded_by"])
+    return TaskAttachmentResponse.model_validate(attachment)
+
+
+async def list_attachments(db: AsyncSession, task_id: str) -> list["TaskAttachmentResponse"]:
+    from sqlalchemy.orm import selectinload as sil
+    from app.models.task import TaskAttachment
+    from .schema import TaskAttachmentResponse
+
+    result = await db.execute(
+        select(TaskAttachment)
+        .options(sil(TaskAttachment.uploaded_by))
+        .where(TaskAttachment.task_id == uuid.UUID(task_id))
+        .order_by(TaskAttachment.created_at.asc())
+    )
+    return [TaskAttachmentResponse.model_validate(a) for a in result.scalars()]
+
+
+async def download_attachment(db: AsyncSession, task_id: str, attachment_id: str):
+    import os
+    from fastapi.responses import FileResponse
+    from app.models.task import TaskAttachment
+
+    result = await db.execute(
+        select(TaskAttachment).where(
+            TaskAttachment.id == uuid.UUID(attachment_id),
+            TaskAttachment.task_id == uuid.UUID(task_id),
+        )
+    )
+    att = result.scalar_one_or_none()
+    if not att:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    upload_dir = os.path.join(os.path.dirname(__file__), "../../../../uploads", "task_attachments")
+    path = os.path.join(upload_dir, att.stored_filename)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="File not found on server")
+
+    return FileResponse(path, media_type=att.file_type, filename=att.filename)

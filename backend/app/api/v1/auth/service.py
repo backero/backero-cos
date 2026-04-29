@@ -54,7 +54,8 @@ async def send_otp(db: AsyncSession, phone: str) -> str:
 
     otp = generate_otp()
     await store_otp(phone, otp)
-    await send_otp_sms(phone, otp)
+    if settings.MSG91_AUTH_KEY and settings.MSG91_TEMPLATE_ID:
+        await send_otp_sms(phone, otp)
 
     print(f"\n{'='*40}\n[OTP] Phone: {phone}  OTP: {otp}\n{'='*40}\n")
     return otp

@@ -33,6 +33,7 @@ const MODULE_LABELS: Record<Module, string> = {
   production: "Production",
   reports: "Reports",
   roles: "Roles & Access",
+  records: "Activity Records",
 };
 
 // Human-readable description of what each permission level means per module
@@ -79,6 +80,11 @@ const MODULE_ACTIONS: Record<
     view: "View existing roles and their permission settings",
     create: "Create new roles with custom permissions",
     edit: "Modify role names, colors and permissions",
+  },
+  records: {
+    view: "View the full activity audit trail",
+    create: "",
+    edit: "Restore deleted records",
   },
 };
 

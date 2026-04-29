@@ -3,10 +3,11 @@ from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.api.v1.schemas import PaginatedResponse
 from .model import Attendance, Department, Employee
 from .schema import (
     AttendanceResponse,
@@ -57,23 +58,53 @@ async def create_department(db: AsyncSession, body: DepartmentCreate) -> Departm
     return DepartmentResponse.model_validate(dept)
 
 
+async def update_department(db: AsyncSession, dept_id: str, body: DepartmentCreate) -> DepartmentResponse:
+    result = await db.execute(select(Department).where(Department.id == uuid.UUID(dept_id)))
+    dept = result.scalar_one_or_none()
+    if not dept:
+        raise HTTPException(status_code=404, detail="Department not found")
+    # check name conflict on other departments
+    conflict = await db.execute(
+        select(Department).where(Department.name == body.name, Department.id != uuid.UUID(dept_id))
+    )
+    if conflict.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Department '{body.name}' already exists.", headers={"X-Field": "name"})
+    dept.name = body.name
+    dept.description = body.description
+    return DepartmentResponse.model_validate(dept)
+
+
 async def list_employees(
     db: AsyncSession,
     department_id: Optional[str] = None,
     is_active: Optional[bool] = True,
-) -> list[EmployeeResponse]:
+    search: Optional[str] = None,
+    page: int = 1,
+    limit: int = 50,
+) -> PaginatedResponse[EmployeeResponse]:
     query = select(Employee).options(selectinload(Employee.department))
     if department_id:
         query = query.where(Employee.department_id == uuid.UUID(department_id))
     if is_active is not None:
         query = query.where(Employee.is_active == is_active)
-    query = query.order_by(Employee.name)
+    if search:
+        term = f"%{search}%"
+        query = query.where(or_(Employee.name.ilike(term), Employee.phone.ilike(term)))
+
+    count_result = await db.execute(select(func.count()).select_from(query.subquery()))
+    total = count_result.scalar_one()
+
+    query = query.order_by(Employee.name).offset((page - 1) * limit).limit(limit)
     result = await db.execute(query)
-    return [_employee_response(e) for e in result.scalars()]
+    items = [_employee_response(e) for e in result.scalars()]
+    return PaginatedResponse.build(items, total, page, limit)
 
 
-async def create_employee(db: AsyncSession, body: EmployeeCreate) -> EmployeeResponse:
+async def create_employee(
+    db: AsyncSession, body: EmployeeCreate, actor_id: uuid.UUID, actor_name: str
+) -> EmployeeResponse:
     from app.api.v1.roles.model import Role
+    from app.utils.activity import log as activity_log
 
     existing = await db.execute(select(Employee).where(Employee.phone == body.phone))
     if existing.scalar_one_or_none():
@@ -102,6 +133,18 @@ async def create_employee(db: AsyncSession, body: EmployeeCreate) -> EmployeeRes
     db.add(emp)
     await db.flush()
     await db.refresh(emp, ["department"])
+
+    await activity_log(
+        db,
+        actor_id=actor_id,
+        actor_name=actor_name,
+        action="create",
+        entity_type="employee",
+        entity_id=str(emp.id),
+        entity_name=emp.name,
+        description=f"{actor_name} added employee '{emp.name}' with role {role_name}",
+    )
+
     return _employee_response(emp)
 
 

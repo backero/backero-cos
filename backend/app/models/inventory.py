@@ -2,15 +2,18 @@ import uuid
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.mixins import TimestampMixin, UUIDMixin
+from app.db.mixins import SoftDeleteMixin, TimestampMixin, UUIDMixin
 from app.db.session import Base
 
 
-class Product(Base, UUIDMixin, TimestampMixin):
+class Product(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
+    __table_args__ = (
+        Index("ix_products_category_active", "category", "is_active"),
+    )
     __tablename__ = "products"
 
     name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -74,6 +77,9 @@ class ProductionBatch(Base, UUIDMixin, TimestampMixin):
 
 
 class PlatformOrder(Base, UUIDMixin, TimestampMixin):
+    __table_args__ = (
+        Index("ix_platform_orders_platform_date", "platform", "order_date"),
+    )
     __tablename__ = "platform_orders"
 
     platform: Mapped[str] = mapped_column(String(50), nullable=False)  # amazon/flipkart/meesho/website/offline

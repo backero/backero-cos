@@ -19,7 +19,6 @@ import {
   Plus,
   Search,
   UserCheck,
-  UserX,
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -44,24 +43,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Pagination } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  useAttendance,
   useCheckIn,
   useCheckOut,
   useCreateDepartment,
+  useUpdateDepartment,
   useCreateEmployee,
   useUpdateEmployee,
   useDepartments,
   useEmployees,
-  useExportEmployees,
-  useImportEmployees,
   useRoles,
 } from "@/hooks/use-queries";
-import { ImportExportMenu } from "@/components/ImportExportMenu";
-import { api } from "@/lib/api-client";
-import { format, getDaysInMonth, startOfMonth } from "date-fns";
 import { useAuthStore } from "@/stores/auth-store";
 import { useUIStore } from "@/stores/ui-store";
 import { cn, formatDate, getInitials } from "@/lib/utils";
@@ -77,7 +72,10 @@ const employeeSchema = z.object({
   role_id: z.string().min(1, "Role is required"),
   designation: z.string().optional(),
   department_id: z.string().optional(),
-  salary: z.number().positive().optional(),
+  salary: z.preprocess(
+    (val) => (typeof val === "number" && isNaN(val)) ? undefined : val,
+    z.number().positive("Salary must be a positive number").optional()
+  ),
   join_date: z.string().optional(),
 });
 
@@ -93,7 +91,7 @@ type ViewMode = "card" | "table";
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function EmployeesPage() { 
+export default function EmployeesPage() {
   const { modals, openModal, closeModal } = useUIStore();
   const { canCreate, canEdit } = useAuthStore();
   const [deptFilter, setDeptFilter] = useState("");
@@ -101,36 +99,33 @@ export default function EmployeesPage() {
   const [deptDialog, setDeptDialog] = useState(false);
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("card");
-  const [activeFilter, setActiveFilter] = useState<"active" | "inactive">("active");
   const { user } = useAuthStore();
 
   const canCreateEmp = canCreate("employees");
   const canEditEmp   = canEdit("employees");
   const canCreateDept = canCreate("employees");
 
-  const { data: employees, isLoading } = useEmployees({
+  const [page, setPage] = useState(1);
+
+  const { data: employeeData, isLoading } = useEmployees({
     department_id: deptFilter || undefined,
-    is_active: activeFilter === "active",
+    is_active: true,
+    search: search || undefined,
+    page,
+    limit: 50,
   });
+  const employees = employeeData?.items ?? [];
   const { data: departments } = useDepartments();
   const { data: roles = [] } = useRoles();
 
   const createEmployee = useCreateEmployee();
-  const exportEmployees = useExportEmployees();
-  const importEmployees = useImportEmployees();
 
   // Employee create form
   const empForm = useForm<EmployeeForm>({
     resolver: zodResolver(employeeSchema),
   });
 
-  const filtered = employees?.filter((e) =>
-    search
-      ? e.name.toLowerCase().includes(search.toLowerCase()) ||
-        e.phone.includes(search) ||
-        e.email?.toLowerCase().includes(search.toLowerCase())
-      : true,
-  );
+  const filtered = employees;
 
   async function onSubmitEmployee(data: EmployeeForm) {
     try {
@@ -167,17 +162,8 @@ export default function EmployeesPage() {
             </TabsTrigger>
           </TabsList>
 
-          <div className="flex gap-2 flex-wrap">
-            <TabsContent value="employees" className="m-0 flex gap-2">
-              <ImportExportMenu
-                onExport={() => exportEmployees.mutateAsync()}
-                onImport={(f) => importEmployees.mutateAsync(f)}
-                onSampleDownload={() => api.employees.sample()}
-                exportLabel="Export Employees"
-                importLabel="Import Employees"
-                isExporting={exportEmployees.isPending}
-                isImporting={importEmployees.isPending}
-              />
+          <div className="flex gap-2">
+            <TabsContent value="employees" className="m-0">
               {canCreateEmp && (
                 <Button size="sm" onClick={() => openModal("createEmployee")}>
                   <Plus className="w-4 h-4 mr-1.5" /> Add Employee
@@ -199,7 +185,7 @@ export default function EmployeesPage() {
           {/* Stats */}
           <div className="grid grid-cols-3 gap-4">
             {[
-              { label: activeFilter === "active" ? "Total Active" : "Total Inactive", value: employees?.length ?? 0, icon: activeFilter === "active" ? Users : UserX, color: activeFilter === "active" ? "bg-blue-500" : "bg-slate-400" },
+              { label: "Total Active",  value: employeeData?.total ?? 0, icon: Users,     color: "bg-blue-500" },
               { label: "Present Today", value: "—",                    icon: UserCheck,  color: "bg-green-500" },
               { label: "Departments",   value: departments?.length ?? 0, icon: Building2, color: "bg-purple-500" },
             ].map((stat, i) => (
@@ -226,39 +212,13 @@ export default function EmployeesPage() {
 
           {/* Filters + View toggle */}
           <div className="flex items-center gap-3 flex-wrap">
-            {/* Active / Inactive toggle */}
-            <div className="flex items-center rounded-md border border-border overflow-hidden text-sm">
-              <button
-                onClick={() => setActiveFilter("active")}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 h-9 transition-colors",
-                  activeFilter === "active"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted",
-                )}
-              >
-                <Users className="w-3.5 h-3.5" /> Active
-              </button>
-              <button
-                onClick={() => setActiveFilter("inactive")}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 h-9 transition-colors",
-                  activeFilter === "inactive"
-                    ? "bg-slate-500 text-white"
-                    : "text-muted-foreground hover:bg-muted",
-                )}
-              >
-                <UserX className="w-3.5 h-3.5" /> Inactive
-              </button>
-            </div>
-
             <div className="relative flex-1 min-w-48">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 className="pl-9 h-9"
-                placeholder="Search by name, phone or email…"
+                placeholder="Search by name or phone…"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               />
             </div>
             <Select
@@ -324,36 +284,46 @@ export default function EmployeesPage() {
               </CardContent>
             </Card>
           ) : viewMode === "card" ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filtered?.map((employee, i) => (
-                <EmployeeCard
-                  key={employee.id}
-                  employee={employee}
-                  index={i}
-                  isCurrentUser={employee.id === user?.id}
-                  canCheckIn={employee.id === user?.id || canEditEmp}
-                  canEdit={canEditEmp}
-                  roles={roles}
-                  onEdit={() => setEditEmployee(employee)}
-                  onCheckIn={() => checkIn.mutate({ id: employee.id })}
-                  onCheckOut={() => checkOut.mutate(employee.id)}
-                  checkInLoading={checkIn.isPending}
-                  checkOutLoading={checkOut.isPending}
-                />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filtered?.map((employee, i) => (
+                  <EmployeeCard
+                    key={employee.id}
+                    employee={employee}
+                    index={i}
+                    isCurrentUser={employee.id === user?.id}
+                    canCheckIn={employee.id === user?.id || canEditEmp}
+                    canEdit={canEditEmp}
+                    roles={roles}
+                    onEdit={() => setEditEmployee(employee)}
+                    onCheckIn={() => checkIn.mutate({ id: employee.id })}
+                    onCheckOut={() => checkOut.mutate(employee.id)}
+                    checkInLoading={checkIn.isPending}
+                    checkOutLoading={checkOut.isPending}
+                  />
+                ))}
+              </div>
+              {employeeData && employeeData.pages > 1 && (
+                <Pagination page={employeeData.page} pages={employeeData.pages} total={employeeData.total} limit={employeeData.limit} onPageChange={setPage} />
+              )}
+            </>
           ) : (
-            <EmployeeTable
-              employees={filtered ?? []}
-              currentUserId={user?.id}
-              canEdit={canEditEmp}
-              roles={roles}
-              onEdit={(emp) => setEditEmployee(emp)}
-              onCheckIn={(id) => checkIn.mutate({ id })}
-              onCheckOut={(id) => checkOut.mutate(id)}
-              checkInLoading={checkIn.isPending}
-              checkOutLoading={checkOut.isPending}
-            />
+            <>
+              <EmployeeTable
+                employees={filtered ?? []}
+                currentUserId={user?.id}
+                canEdit={canEditEmp}
+                roles={roles}
+                onEdit={(emp) => setEditEmployee(emp)}
+                onCheckIn={(id) => checkIn.mutate({ id })}
+                onCheckOut={(id) => checkOut.mutate(id)}
+                checkInLoading={checkIn.isPending}
+                checkOutLoading={checkOut.isPending}
+              />
+              {employeeData && employeeData.pages > 1 && (
+                <Pagination page={employeeData.page} pages={employeeData.pages} total={employeeData.total} limit={employeeData.limit} onPageChange={setPage} />
+              )}
+            </>
           )}
         </TabsContent>
 
@@ -584,14 +554,6 @@ function EditEmployeeSheet({
     }
   }
 
-  async function toggleActive() {
-    await updateEmployee.mutateAsync({
-      id: employee.id,
-      data: { is_active: !employee.is_active },
-    });
-    onClose();
-  }
-
   return (
     <Sheet open onOpenChange={(o) => !o && onClose()}>
       <SheetContent>
@@ -603,31 +565,11 @@ function EditEmployeeSheet({
           <SheetBody className="space-y-4">
             <EmployeeFormFields form={form} roles={roles} departments={departments} />
           </SheetBody>
-          <SheetFooter className="flex-col gap-2 sm:flex-col">
-            <div className="flex gap-2 w-full">
-              <Button type="button" variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
-              <Button type="submit" disabled={updateEmployee.isPending} className="flex-1">
-                {updateEmployee.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}
-                Save Changes
-              </Button>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              className={cn(
-                "w-full gap-2",
-                employee.is_active
-                  ? "border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400"
-                  : "border-green-300 text-green-700 hover:bg-green-50 dark:border-green-800 dark:text-green-400",
-              )}
-              onClick={toggleActive}
-              disabled={updateEmployee.isPending}
-            >
-              {employee.is_active ? (
-                <><UserX className="w-4 h-4" /> Deactivate Employee</>
-              ) : (
-                <><UserCheck className="w-4 h-4" /> Activate Employee</>
-              )}
+          <SheetFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={updateEmployee.isPending}>
+              {updateEmployee.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}
+              Save Changes
             </Button>
           </SheetFooter>
         </form>
@@ -690,7 +632,7 @@ function EmployeeTable({
                 {/* Name + avatar */}
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <Avatar className={cn("w-8 h-8 shrink-0", !emp.is_active && "opacity-50")}>
+                    <Avatar className="w-8 h-8 shrink-0">
                       <AvatarImage
                         src={emp.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.name)}&background=4d8731&color=fff&size=32`}
                         alt={emp.name}
@@ -701,12 +643,9 @@ function EmployeeTable({
                     </Avatar>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className={cn("font-medium truncate", emp.is_active ? "text-foreground" : "text-muted-foreground")}>{emp.name}</span>
+                        <span className="font-medium text-foreground truncate">{emp.name}</span>
                         {isCurrentUser && (
                           <Badge className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-0 shrink-0">You</Badge>
-                        )}
-                        {!emp.is_active && (
-                          <Badge className="text-[10px] px-1.5 py-0 bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400 border-0 shrink-0">Inactive</Badge>
                         )}
                       </div>
                       {emp.designation && (
@@ -885,6 +824,8 @@ function CreateDepartmentDialog({
   existing?: Department;
 }) {
   const createDept = useCreateDepartment();
+  const updateDept = useUpdateDepartment();
+  const isPending = createDept.isPending || updateDept.isPending;
 
   const form = useForm<DepartmentForm>({
     resolver: zodResolver(departmentSchema),
@@ -896,7 +837,11 @@ function CreateDepartmentDialog({
 
   async function onSubmit(data: DepartmentForm) {
     try {
-      await createDept.mutateAsync({ name: data.name, description: data.description || undefined });
+      if (existing) {
+        await updateDept.mutateAsync({ id: existing.id, data: { name: data.name, description: data.description || undefined } });
+      } else {
+        await createDept.mutateAsync({ name: data.name, description: data.description || undefined });
+      }
       form.reset();
       onClose();
     } catch (err) {
@@ -929,8 +874,8 @@ function CreateDepartmentDialog({
           </SheetBody>
           <SheetFooter>
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={createDept.isPending}>
-              {createDept.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}
+            <Button type="submit" disabled={isPending}>
+              {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}
               {existing ? "Save" : "Create"}
             </Button>
           </SheetFooter>
@@ -941,87 +886,6 @@ function CreateDepartmentDialog({
 }
 
 // ── Employee Card ─────────────────────────────────────────────────────────────
-
-// ── Attendance Mini Calendar ──────────────────────────────────────────────────
-
-const ATT_STATUS_COLOR: Record<string, string> = {
-  present: "bg-green-500",
-  absent: "bg-red-400",
-  half_day: "bg-yellow-400",
-  wfh: "bg-blue-400",
-};
-
-function AttendanceCalendar({ employeeId }: { employeeId: string }) {
-  const now = new Date();
-  const [calMonth, setCalMonth] = useState(now.getMonth() + 1);
-  const [calYear, setCalYear] = useState(now.getFullYear());
-  const { data: records = [], isLoading } = useAttendance(employeeId, calMonth, calYear);
-
-  const daysInMonth = getDaysInMonth(new Date(calYear, calMonth - 1));
-  const firstDay = startOfMonth(new Date(calYear, calMonth - 1)).getDay();
-
-  const byDate: Record<string, string> = {};
-  records.forEach((r) => {
-    const d = typeof r.date === "string" ? r.date : format(new Date(r.date), "yyyy-MM-dd");
-    byDate[d] = r.status;
-  });
-
-  function prevMonth() {
-    if (calMonth === 1) { setCalMonth(12); setCalYear((y) => y - 1); }
-    else setCalMonth((m) => m - 1);
-  }
-  function nextMonth() {
-    if (calMonth === 12) { setCalMonth(1); setCalYear((y) => y + 1); }
-    else setCalMonth((m) => m + 1);
-  }
-
-  return (
-    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-      <div className="flex items-center justify-between mb-2">
-        <button onClick={prevMonth} className="text-slate-400 hover:text-slate-600 text-xs px-1">‹</button>
-        <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
-          {format(new Date(calYear, calMonth - 1), "MMM yyyy")}
-        </span>
-        <button onClick={nextMonth} className="text-slate-400 hover:text-slate-600 text-xs px-1">›</button>
-      </div>
-      {isLoading ? (
-        <div className="h-16 flex items-center justify-center text-xs text-slate-400">Loading…</div>
-      ) : (
-        <div className="grid grid-cols-7 gap-0.5">
-          {["S","M","T","W","T","F","S"].map((d, i) => (
-            <div key={i} className="text-[9px] text-center text-slate-400 font-medium">{d}</div>
-          ))}
-          {Array.from({ length: firstDay }).map((_, i) => <div key={`e-${i}`} />)}
-          {Array.from({ length: daysInMonth }).map((_, i) => {
-            const day = i + 1;
-            const dateKey = `${calYear}-${String(calMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-            const status = byDate[dateKey];
-            const isToday = dateKey === format(now, "yyyy-MM-dd");
-            return (
-              <div key={day} className="flex items-center justify-center" title={status ?? ""}>
-                <div className={cn(
-                  "w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-medium",
-                  isToday && !status ? "ring-1 ring-primary text-primary" : "",
-                  status ? `${ATT_STATUS_COLOR[status]} text-white` : "text-slate-500",
-                )}>
-                  {day}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      <div className="flex gap-2 mt-2 flex-wrap">
-        {Object.entries(ATT_STATUS_COLOR).map(([s, c]) => (
-          <div key={s} className="flex items-center gap-1">
-            <div className={cn("w-2 h-2 rounded-full", c)} />
-            <span className="text-[9px] capitalize text-slate-400">{s.replace("_"," ")}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function EmployeeCard({
   employee,
@@ -1048,7 +912,6 @@ function EmployeeCard({
   checkInLoading: boolean;
   checkOutLoading: boolean;
 }) {
-  const [showCalendar, setShowCalendar] = useState(false);
   const roleColor = roles.find((r) => r.name === employee.role)?.color ?? "#64748b";
 
   return (
@@ -1058,7 +921,7 @@ function EmployeeCard({
       transition={{ delay: index * 0.06, duration: 0.35 }}
       whileHover={{ y: -2 }}
     >
-      <Card className={cn("overflow-hidden hover:shadow-md transition-shadow", isCurrentUser && "border-primary/30", !employee.is_active && "opacity-60")}>
+      <Card className={cn("overflow-hidden hover:shadow-md transition-shadow", isCurrentUser && "border-primary/30")}>
         <CardContent className="p-5">
           {/* Avatar + Name + Edit button */}
           <div className="flex items-start gap-3 mb-4">
@@ -1079,9 +942,6 @@ function EmployeeCard({
                 <p className="text-sm font-semibold truncate">{employee.name}</p>
                 {isCurrentUser && (
                   <Badge className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-0">You</Badge>
-                )}
-                {!employee.is_active && (
-                  <Badge className="text-[10px] px-1.5 py-0 bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400 border-0">Inactive</Badge>
                 )}
               </div>
               <p className="text-xs text-muted-foreground truncate">{employee.designation ?? "—"}</p>
@@ -1158,16 +1018,6 @@ function EmployeeCard({
               </Button>
             </div>
           )}
-
-          {/* Attendance calendar toggle */}
-          <button
-            onClick={() => setShowCalendar((v) => !v)}
-            className="w-full mt-2 text-[10px] text-slate-400 hover:text-primary flex items-center gap-1 justify-center transition-colors"
-          >
-            <Calendar className="w-3 h-3" />
-            {showCalendar ? "Hide" : "View"} Attendance
-          </button>
-          {showCalendar && <AttendanceCalendar employeeId={String(employee.id)} />}
         </CardContent>
       </Card>
     </motion.div>

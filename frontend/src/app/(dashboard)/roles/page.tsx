@@ -49,6 +49,7 @@ const MODULE_LABELS: Record<Module, string> = {
   production: "Production",
   reports: "Reports",
   roles: "Roles & Access",
+  records: "Activity Records",
 };
 
 const PRESET_COLORS = [

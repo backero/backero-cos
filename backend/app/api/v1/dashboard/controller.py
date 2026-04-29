@@ -5,7 +5,7 @@ from app.core.dependencies import CurrentUser
 from app.db.session import get_db
 
 from . import service
-from .schema import KPIResponse, MonthlyTrendItem
+from .schema import KPIResponse, MonthlyTrendItem, DepartmentProductivityItem
 
 
 async def get_kpis(
@@ -20,3 +20,10 @@ async def monthly_trend(
     current_user: CurrentUser = None,
 ) -> list[MonthlyTrendItem]:
     return await service.monthly_trend(db)
+
+
+async def department_productivity(
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = None,
+) -> list[DepartmentProductivityItem]:
+    return await service.get_department_productivity(db)

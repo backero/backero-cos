@@ -1,10 +1,20 @@
+from collections import defaultdict
 from datetime import date, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from .model import AccountEntry, Attendance, Employee, Invoice, Inventory, Task
-from .schema import KPIResponse, MonthlyTrendItem, TaskStats
+from app.api.v1.finance.model import AccountEntry, Invoice
+from app.api.v1.inventory.model import Inventory
+from app.models.employee import Attendance, Department, Employee
+from app.models.task import Task
+from .schema import (
+    DepartmentProductivityItem,
+    KPIResponse,
+    MonthlyTrendItem,
+    TaskStats,
+)
 
 
 async def get_kpis(db: AsyncSession) -> KPIResponse:
@@ -62,6 +72,61 @@ async def get_kpis(db: AsyncSession) -> KPIResponse:
         present_today=att_count.scalar(),
         low_stock_products=low_stock.scalar(),
     )
+
+
+async def get_department_productivity(db: AsyncSession) -> list[DepartmentProductivityItem]:
+    dept_result = await db.execute(
+        select(Department).options(selectinload(Department.employees)).order_by(Department.name)
+    )
+    departments = dept_result.scalars().all()
+
+    task_result = await db.execute(select(Task).where(Task.department_id.is_not(None)))
+    tasks = task_result.scalars().all()
+
+    tasks_by_dept = defaultdict(list)
+    for task in tasks:
+        tasks_by_dept[task.department_id].append(task)
+
+    items: list[DepartmentProductivityItem] = []
+    for dept in departments:
+        dept_tasks = tasks_by_dept.get(dept.id, [])
+        total = len(dept_tasks)
+        pending = sum(1 for t in dept_tasks if t.status == "pending")
+        in_progress = sum(1 for t in dept_tasks if t.status == "in_progress")
+        completed = sum(1 for t in dept_tasks if t.status == "completed")
+        overdue = sum(1 for t in dept_tasks if t.status == "overdue")
+
+        completed_tasks = [t for t in dept_tasks if t.completed_at is not None]
+        avg_completion_days = 0.0
+        if completed_tasks:
+            total_days = sum(
+                (t.completed_at - t.created_at).total_seconds() / 86400
+                for t in completed_tasks
+                if t.completed_at and t.created_at
+            )
+            avg_completion_days = round(total_days / len(completed_tasks), 2)
+
+        completion_rate = round((completed / total) * 100, 2) if total else 0.0
+        overdue_rate = round((overdue / total) * 100, 2) if total else 0.0
+        active_employees = sum(1 for emp in dept.employees if emp.is_active)
+
+        items.append(
+            DepartmentProductivityItem(
+                department_id=dept.id,
+                department_name=dept.name,
+                total_tasks=total,
+                pending_tasks=pending,
+                in_progress_tasks=in_progress,
+                completed_tasks=completed,
+                overdue_tasks=overdue,
+                completion_rate=completion_rate,
+                overdue_rate=overdue_rate,
+                average_completion_days=avg_completion_days,
+                active_employees=active_employees,
+            )
+        )
+
+    return items
 
 
 async def monthly_trend(db: AsyncSession) -> list[MonthlyTrendItem]:
