@@ -40,7 +40,11 @@ import type {
   TaskComment,
 } from "@/types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+// Always use relative URLs — Next.js rewrites in next.config.ts proxy /api/v1/*
+// to the backend (NEXT_PUBLIC_API_URL). This avoids cross-origin CORS issues and
+// keeps cookies working, since the browser only ever talks to the Vercel domain.
+const API_BASE = "";
+const SERVER_API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // ── Core fetch helpers ────────────────────────────────────────────────────────
 
@@ -67,7 +71,16 @@ export async function serverFetch<T>(
   options: FetchOptions = {},
 ): Promise<T> {
   const { params, ...init } = options;
-  const url = buildUrl(path, params);
+  const base = `${SERVER_API_BASE}/api/v1${path}`;
+  const url = (() => {
+    if (!params) return base;
+    const sp = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== null && v !== undefined && v !== "") sp.set(k, String(v));
+    }
+    const qs = sp.toString();
+    return qs ? `${base}?${qs}` : base;
+  })();
   const res = await fetch(url, {
     ...init,
     credentials: "include",
